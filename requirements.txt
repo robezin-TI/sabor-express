@@ -1,7 +1,7 @@
+streamlit==1.37.1
+streamlit-folium==0.20.0
 osmnx==1.9.3
 networkx==3.3
 geopy==2.4.1
 folium==0.17.0
 pandas==2.2.2
-scikit-learn==1.5.1
-flask==3.0.3
