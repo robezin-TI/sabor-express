@@ -1,0 +1,7 @@
+networkx
+scikit-learn
+pandas
+matplotlib
+plotly
+flask
+geopy
