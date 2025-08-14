@@ -1,1 +1,38 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Rota Inteligente</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <h1>Rota Inteligente</h1>
+    <p>Adicione destinos, reordene e otimize rotas por cluster (K‑Means).</p>
+  </header>
 
+  <main>
+    <section id="panel">
+      <div class="controls">
+        <label>Clusters (motoboys):</label>
+        <input id="k-input" type="number" min="1" placeholder="auto"/>
+        <button id="add-dest">+ Adicionar destino</button>
+        <button id="use-map">Clique no mapa</button>
+        <button id="optimize">Otimizar rota</button>
+        <button id="clear">Limpar</button>
+      </div>
+
+      <ul id="dest-list"></ul>
+
+      <div id="summary"></div>
+    </section>
+
+    <section id="map"></section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
