@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import numpy as np
 from sklearn.cluster import KMeans
-from src.backend.geo import haversine_km
+from src.backend.geo import haversine_km  # import absoluto
 
 @dataclass
 class Point:
@@ -25,7 +25,6 @@ def kmeans_clusters(points: List[Point], k: int) -> Dict[int, List[Point]]:
         clusters.setdefault(int(label), []).append(p)
     return clusters
 
-# matriz de distâncias haversine
 def distance_matrix(points: List[Point]) -> np.ndarray:
     n = len(points)
     M = np.zeros((n, n), dtype=float)
@@ -35,14 +34,12 @@ def distance_matrix(points: List[Point]) -> np.ndarray:
             M[i, j] = M[j, i] = d
     return M
 
-# heurística TSP: nearest neighbor + 2-opt
 def tsp_route(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float]:
     n = len(points)
     if n <= 1:
         return list(range(n)), 0.0
     M = distance_matrix(points)
 
-    # nearest neighbor
     unvisited = set(range(n))
     route = [start_idx]
     unvisited.remove(start_idx)
@@ -52,7 +49,6 @@ def tsp_route(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float
         route.append(nxt)
         unvisited.remove(nxt)
 
-    # 2-opt improvement
     improved = True
     def total_len(rt: List[int]) -> float:
         return sum(M[rt[i], rt[i+1]] for i in range(len(rt)-1))
@@ -74,16 +70,13 @@ def tsp_route(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float
     return route, best_len
 
 def estimate_eta_km(distance_km: float, avg_speed_kmh: float = 25.0) -> float:
-    """retorna ETA em minutos (aprox). velocidade média de motoboy ~25km/h intra-urbano."""
     return (distance_km / max(1e-6, avg_speed_kmh)) * 60.0
 
 def optimize(points: List[Point], k_clusters: Optional[int] = None) -> Dict:
-    # clusterização (ML)
     clusters = kmeans_clusters(points, k_clusters or 0)
 
     result = {"clusters": [], "total_km": 0.0, "total_eta_min": 0.0}
     for label, pts in clusters.items():
-        # escolhe início como o mais ao sul-oeste (heurística simples)
         start_idx = int(np.argmin([ (p.lat, p.lon) for p in pts ]))
         order_idx, length_km = tsp_route(pts, start_idx=start_idx)
         ordered = [pts[i] for i in order_idx]
@@ -102,4 +95,3 @@ def optimize(points: List[Point], k_clusters: Optional[int] = None) -> Dict:
     result["total_km"] = round(result["total_km"], 3)
     result["total_eta_min"] = round(result["total_eta_min"], 1)
     return result
-
