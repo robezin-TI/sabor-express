@@ -2,7 +2,8 @@ import os
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from typing import List
-from .optimizer import Point, optimize
+from src.backend.optimizer import Point, optimize
+
 
 app = Flask(__name__, static_folder="../frontend", static_url_path="/")
 CORS(app)
