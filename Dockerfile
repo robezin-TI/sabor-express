@@ -5,18 +5,19 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# system deps (se precisar compilar numpy/pandas)
+# dependências do sistema
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# instalar requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# copiar todo o projeto
 COPY . .
 
 EXPOSE 5000
 
-# variável opcional: OSRM_URL (ex.: http://router.project-osrm.org)
-# se não setar, backend usa haversine puro.
-CMD ["python", "src/backend/app.py"]
+# comando final para rodar o backend
+CMD ["python", "-m", "src.backend.app"]
