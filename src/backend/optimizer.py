@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import numpy as np
 from sklearn.cluster import KMeans
-from .geo import haversine_km
+from src.backend.geo import haversine_km
 
 @dataclass
 class Point:
