@@ -1,7 +1,6 @@
 import math
 from typing import Tuple
 
-# distância haversine em quilômetros
 def haversine_km(a: Tuple[float, float], b: Tuple[float, float]) -> float:
     lat1, lon1 = a
     lat2, lon2 = b
