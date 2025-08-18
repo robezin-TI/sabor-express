@@ -9,9 +9,15 @@ function initMap() {
   }).addTo(map);
   layerGroup = L.layerGroup().addTo(map);
 
-  map.on('click', (e) => {
+  map.on('click', async (e) => {
     if (!drawMode) return;
-    addDestination(e.latlng.lat, e.latlng.lng);
+    const { lat, lng } = e.latlng;
+    const addr = await reverseGeocode(lat, lng);
+    const li = addDestination(addr || '');
+    li.dataset.lat = lat;
+    li.dataset.lon = lng;
+    li.querySelector('.coords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    renderMarkers();
   });
 }
 
@@ -19,17 +25,16 @@ function genId() {
   return Math.random().toString(36).slice(2, 7);
 }
 
-function addDestination(lat = '', lon = '') {
+function addDestination(address = '') {
   const li = document.createElement('li');
   li.draggable = true;
   li.dataset.id = genId();
 
   li.innerHTML = `
     <span class="badge">#</span>
-    <input class="lat" type="number" step="any" placeholder="lat" value="${lat}">
-    <input class="lon" type="number" step="any" placeholder="lon" value="${lon}">
-    <button class="focus">📍</button>
-    <button class="remove">🗑️</button>
+    <input class="addr" type="text" placeholder="Digite um endereço" value="${address}">
+    <button class="geocode" title="Buscar coordenadas">🔍</button>
+    <button class="remove" title="Remover">🗑️</button>
     <div class="coords"></div>
   `;
 
@@ -45,60 +50,139 @@ function addDestination(lat = '', lon = '') {
   });
 
   li.querySelector('.remove').onclick = () => { li.remove(); renumber(); };
-  li.querySelector('.focus').onclick = () => {
-    const lat = parseFloat(li.querySelector('.lat').value);
-    const lon = parseFloat(li.querySelector('.lon').value);
-    if (isFinite(lat) && isFinite(lon)) map.setView([lat, lon], 15);
+
+  // geocodificar por clique
+  li.querySelector('.geocode').onclick = async () => {
+    await ensureCoordinates(li);
   };
+
+  // Enter no campo de endereço também geocodifica
+  li.querySelector('.addr').addEventListener('keydown', async (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      await ensureCoordinates(li);
+    }
+  });
 
   document.getElementById('dest-list').appendChild(li);
   renumber();
+  return li;
 }
 
 function renumber() {
   document.querySelectorAll('#dest-list li').forEach((li, idx) => {
     li.querySelector('.badge').textContent = String(idx + 1);
-    const lat = li.querySelector('.lat').value;
-    const lon = li.querySelector('.lon').value;
-    li.querySelector('.coords').textContent = (lat && lon) ? `${lat}, ${lon}` : '';
   });
   renderMarkers();
 }
 
-function renderMarkers() {
+function clearMapLayers() {
   layerGroup.clearLayers();
+  polylines = [];
   markers = [];
+}
+
+function renderMarkers() {
+  clearMapLayers();
   document.querySelectorAll('#dest-list li').forEach((li, idx) => {
-    const lat = parseFloat(li.querySelector('.lat').value);
-    const lon = parseFloat(li.querySelector('.lon').value);
+    const lat = parseFloat(li.dataset.lat);
+    const lon = parseFloat(li.dataset.lon);
     if (isFinite(lat) && isFinite(lon)) {
       const m = L.marker([lat, lon], { draggable: true }).addTo(layerGroup);
-      m.on('dragend', () => {
+      m.on('dragend', async () => {
         const p = m.getLatLng();
-        li.querySelector('.lat').value = p.lat.toFixed(6);
-        li.querySelector('.lon').value = p.lng.toFixed(6);
+        li.dataset.lat = p.lat;
+        li.dataset.lon = p.lng;
+        li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
+        // opcional: atualizar endereço pelo reverse geocode ao arrastar
+        const addr = await reverseGeocode(p.lat, p.lng);
+        if (addr) li.querySelector('.addr').value = addr;
         renumber();
       });
       m.bindTooltip(String(idx + 1), { permanent: true, direction: 'top' }).openTooltip();
       markers.push(m);
     }
   });
-  polylines.forEach(p => layerGroup.removeLayer(p));
-  polylines = [];
+}
+
+async function geocode(address) {
+  if (!address) return null;
+  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }});
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!Array.isArray(data) || data.length === 0) return null;
+  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display: data[0].display_name };
+}
+
+async function reverseGeocode(lat, lon) {
+  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }});
+  if (!res.ok) return '';
+  const data = await res.json();
+  return data.display_name || '';
+}
+
+async function ensureCoordinates(li) {
+  // já tem coordenadas?
+  const has = isFinite(parseFloat(li.dataset.lat)) && isFinite(parseFloat(li.dataset.lon));
+  if (has) return true;
+
+  const addr = li.querySelector('.addr').value.trim();
+  if (!addr) {
+    alert('Digite um endereço.');
+    return false;
+  }
+  const g = await geocode(addr);
+  if (!g) {
+    alert('Endereço não encontrado.');
+    return false;
+  }
+  li.dataset.lat = g.lat;
+  li.dataset.lon = g.lon;
+  li.querySelector('.coords').textContent = `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}`;
+  // se o display_name veio melhor que o texto digitado, atualiza
+  if (g.display && g.display.length > addr.length) {
+    li.querySelector('.addr').value = g.display;
+  }
+  renderMarkers();
+  return true;
+}
+
+async function ensureAllCoordinates() {
+  const items = Array.from(document.querySelectorAll('#dest-list li'));
+  for (const li of items) {
+    const ok = await ensureCoordinates(li);
+    if (!ok) return false;
+  }
+  return true;
 }
 
 async function optimize() {
+  const btn = document.getElementById('optimize');
+  btn.disabled = true;
+  btn.textContent = 'Otimizando...';
+
+  // garante que todos os itens têm coordenadas
+  const ready = await ensureAllCoordinates();
+  if (!ready) {
+    btn.disabled = false; btn.textContent = 'Otimizar rota';
+    return;
+  }
+
   const points = [];
-  document.querySelectorAll('#dest-list li').forEach((li, idx) => {
-    const lat = parseFloat(li.querySelector('.lat').value);
-    const lon = parseFloat(li.querySelector('.lon').value);
+  document.querySelectorAll('#dest-list li').forEach((li) => {
+    const lat = parseFloat(li.dataset.lat);
+    const lon = parseFloat(li.dataset.lon);
+    const addr = li.querySelector('.addr').value;
     if (isFinite(lat) && isFinite(lon)) {
-      points.push({ id: String(idx + 1), lat, lon });
+      points.push({ id: li.dataset.id, lat, lon, addr });
     }
   });
 
   if (points.length < 2) {
-    alert('Adicione pelo menos 2 destinos.');
+    alert('Adicione pelo menos 2 endereços.');
+    btn.disabled = false; btn.textContent = 'Otimizar rota';
     return;
   }
 
@@ -113,26 +197,44 @@ async function optimize() {
   const data = await resp.json();
   if (data.error) { alert(data.error); return; }
 
-  // desenhar clusters e rotas
-  polylines.forEach(p => layerGroup.removeLayer(p));
-  polylines = [];
+  // Reconstroi a lista já na ordem otimizada (cluster por cluster)
+  const destList = document.getElementById('dest-list');
+  destList.innerHTML = '';
+  data.clusters.forEach((c) => {
+    c.points.forEach(p => {
+      const li = addDestination(p.addr || '');
+      li.dataset.id = p.id;  // preserva ID
+      li.dataset.lat = p.lat;
+      li.dataset.lon = p.lon;
+      li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`;
+    });
+  });
 
+  // Desenha as polylines (uma por cluster, com cores diferentes)
+  layerGroup.clearLayers();
+  markers = []; polylines = [];
   const palette = ['#3366cc','#dc3912','#ff9900','#109618','#990099','#0099c6','#dd4477'];
-  let sumKm = 0, sumEta = 0;
 
   data.clusters.forEach((c, idx) => {
     const color = palette[idx % palette.length];
     const latlngs = c.points.map(p => [p.lat, p.lon]);
     const poly = L.polyline(latlngs, { weight: 5, opacity: 0.8, color }).addTo(layerGroup);
     polylines.push(poly);
-    sumKm += c.distance_km;
-    sumEta += c.eta_min;
+    // recoloca marcadores numerados na ordem
+    c.points.forEach((p, i) => {
+      const m = L.marker([p.lat, p.lon]).addTo(layerGroup);
+      m.bindTooltip(String(i + 1), { permanent: true, direction: 'top' }).openTooltip();
+      markers.push(m);
+    });
   });
 
   document.getElementById('summary').innerHTML =
     `<b>Distância total:</b> ${data.total_km} km — ` +
     `<b>ETA total:</b> ${data.total_eta_min} min — ` +
     `<b>Clusters:</b> ${data.clusters.length}`;
+
+  btn.disabled = false;
+  btn.textContent = 'Otimizar rota';
 }
 
 function bindUI() {
@@ -144,15 +246,10 @@ function bindUI() {
   document.getElementById('optimize').onclick = optimize;
   document.getElementById('clear').onclick = () => {
     document.getElementById('dest-list').innerHTML = '';
-    renumber();
+    document.getElementById('summary').textContent = '';
+    clearMapLayers();
   };
 }
 
 initMap();
 bindUI();
-
-// pontos de exemplo (Itapecerica e região)
-[
-  [-23.7168, -46.8492], [-23.7066, -46.8451],
-  [-23.7015, -46.8335], [-23.7189, -46.8412]
-].forEach(([lat, lon]) => addDestination(lat, lon));
