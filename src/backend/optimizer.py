@@ -3,13 +3,14 @@ from dataclasses import dataclass
 from typing import List, Dict, Tuple, Optional
 import numpy as np
 from sklearn.cluster import KMeans
-from src.backend.geo import haversine_km  # import absoluto
+from src.backend.geo import haversine_km
 
 @dataclass
 class Point:
     id: str
     lat: float
     lon: float
+    addr: str = ""   # <- novo: endereço opcional
 
 def to_np(points: List[Point]) -> np.ndarray:
     return np.array([[p.lat, p.lon] for p in points], dtype=float)
@@ -40,6 +41,7 @@ def tsp_route(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float
         return list(range(n)), 0.0
     M = distance_matrix(points)
 
+    # nearest neighbor
     unvisited = set(range(n))
     route = [start_idx]
     unvisited.remove(start_idx)
@@ -49,6 +51,7 @@ def tsp_route(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float
         route.append(nxt)
         unvisited.remove(nxt)
 
+    # 2-opt
     improved = True
     def total_len(rt: List[int]) -> float:
         return sum(M[rt[i], rt[i+1]] for i in range(len(rt)-1))
@@ -85,7 +88,9 @@ def optimize(points: List[Point], k_clusters: Optional[int] = None) -> Dict:
         result["clusters"].append({
             "label": int(label),
             "order": [p.id for p in ordered],
-            "points": [{"id": p.id, "lat": p.lat, "lon": p.lon} for p in ordered],
+            "points": [{
+                "id": p.id, "lat": p.lat, "lon": p.lon, "addr": p.addr
+            } for p in ordered],
             "distance_km": round(length_km, 3),
             "eta_min": round(eta_min, 1)
         })
