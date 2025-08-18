@@ -2,7 +2,7 @@ import os
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 from typing import List
-from src.backend.optimizer import Point, optimize  # import absoluto
+from src.backend.optimizer import Point, optimize
 
 app = Flask(__name__, static_folder="../frontend", static_url_path="/")
 CORS(app)
@@ -14,9 +14,9 @@ def index():
 @app.route("/optimize-route", methods=["POST"])
 def optimize_route():
     """
-    JSON esperado:
+    JSON:
     {
-      "points": [{"id":"A","lat":-23.6,"lon":-46.9}, ...],
+      "points": [{"id":"A","lat":-23.6,"lon":-46.9,"addr":"Rua X, 123"}, ...],
       "k": 2
     }
     """
@@ -27,13 +27,15 @@ def optimize_route():
     if len(raw_points) < 2:
         return jsonify({"error": "Forneça pelo menos 2 pontos."}), 400
 
-    points = [Point(id=str(p.get("id", i)),
-                    lat=float(p["lat"]),
-                    lon=float(p["lon"]))
-              for i, p in enumerate(raw_points)]
+    points = [Point(
+        id=str(p.get("id", i)),
+        lat=float(p["lat"]),
+        lon=float(p["lon"]),
+        addr=str(p.get("addr", "")))
+        for i, p in enumerate(raw_points)
+    ]
 
-    result = optimize(points, k_clusters=k)
-    return jsonify(result)
+    return jsonify(optimize(points, k_clusters=k))
 
 @app.route("/<path:path>")
 def static_proxy(path):
