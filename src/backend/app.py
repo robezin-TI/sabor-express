@@ -13,13 +13,6 @@ def index():
 
 @app.route("/optimize-route", methods=["POST"])
 def optimize_route():
-    """
-    JSON:
-    {
-      "points": [{"id":"A","lat":-23.6,"lon":-46.9,"addr":"Rua X, 123"}, ...],
-      "k": 2
-    }
-    """
     data = request.get_json(force=True)
     raw_points: List[dict] = data.get("points", [])
     k = data.get("k", None)
@@ -34,7 +27,6 @@ def optimize_route():
         addr=str(p.get("addr", "")))
         for i, p in enumerate(raw_points)
     ]
-
     return jsonify(optimize(points, k_clusters=k))
 
 @app.route("/<path:path>")
