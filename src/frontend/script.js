@@ -1,127 +1,126 @@
-import requests
-import numpy as np
-from sklearn.cluster import KMeans
-import sys
-import json
+let map = L.map('map').setView([-23.7, -46.85], 13);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-class Point:
-    def __init__(self, id, lat, lon, addr=""):
-        self.id = id
-        self.lat = float(lat)
-        self.lon = float(lon)
-        self.addr = addr
+let markers = [];
+let polylines = [];
 
-# -----------------------------
-# Distâncias reais via OSRM
-# -----------------------------
-def osrm_table(points):
-    coords = ";".join([f"{p.lon},{p.lat}" for p in points])
-    url = f"http://router.project-osrm.org/table/v1/driving/{coords}"
-    params = {"annotations": "distance,duration"}
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        dist = np.array(data["distances"])
-        dur = np.array(data["durations"])
-        return dist, dur
-    except Exception as e:
-        print("OSRM error:", e, file=sys.stderr, flush=True)
-        # fallback → matriz grande para forçar outro caminho
-        n = len(points)
-        return np.ones((n, n)) * 1e6, np.ones((n, n)) * 1e6
+function genId() {
+  return Math.random().toString(36).substr(2, 9);
+}
 
-def osrm_route_geometry(points_ordered):
-    coords = ";".join([f"{p.lon},{p.lat}" for p in points_ordered])
-    url = f"http://router.project-osrm.org/route/v1/driving/{coords}"
-    params = {"overview": "full", "geometries": "geojson"}
-    try:
-        r = requests.get(url, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        route = data["routes"][0]
-        geom = route["geometry"]["coordinates"]
-        return geom, route["distance"] / 1000.0, route["duration"] / 60.0
-    except Exception as e:
-        print("OSRM route error:", e, file=sys.stderr, flush=True)
-        # fallback → linhas retas
-        return [[p.lon, p.lat] for p in points_ordered], 0.0, 0.0
+function renumber() {
+  document.querySelectorAll('#dest-list li').forEach((li, i) => {
+    li.querySelector('.badge').textContent = i + 1;
+  });
+}
 
-# -----------------------------
-# Heurística TSP
-# -----------------------------
-def tsp_nearest(dist_matrix):
-    n = len(dist_matrix)
-    if n == 0: return []
-    visited = [False] * n
-    order = [0]
-    visited[0] = True
-    for _ in range(n - 1):
-        last = order[-1]
-        next_city = np.argmin([
-            dist_matrix[last][j] if not visited[j] else np.inf
-            for j in range(n)
-        ])
-        order.append(next_city)
-        visited[next_city] = True
-    return order
+function addDestination(address = '') {
+  const li = document.createElement('li');
+  li.draggable = true;
+  li.dataset.id = genId();
 
-# -----------------------------
-# Otimizador principal
-# -----------------------------
-def optimize(points, k=None):
-    if len(points) < 2:
-        return {"error": "Forneça pelo menos 2 pontos"}
+  li.innerHTML = `
+    <span class="badge">#</span>
+    <input class="addr" type="text" placeholder="Digite um endereço" value="${address}">
+    <button class="geocode">🔍</button>
+    <button class="remove">🗑️</button>
+    <div class="coords"></div>
+  `;
 
-    X = np.array([[p.lat, p.lon] for p in points])
+  li.querySelector('.remove').onclick = () => { li.remove(); renumber(); };
 
-    # define k clusters
-    if not k or k <= 0:
-        k = 1
-    elif k > len(points):
-        k = len(points)
-
-    # clustering
-    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
-    labels = kmeans.fit_predict(X)
-
-    clusters = []
-    total_km = 0
-    total_eta = 0
-
-    for cluster_id in range(k):
-        cluster_pts = [p for i, p in enumerate(points) if labels[i] == cluster_id]
-
-        if len(cluster_pts) < 2:
-            clusters.append({"id": cluster_id, "points": cluster_pts, "order": [0]})
-            continue
-
-        # matriz de distâncias
-        dist, dur = osrm_table(cluster_pts)
-
-        # ordem ótima (TSP)
-        order = tsp_nearest(dist)
-
-        ordered_pts = [cluster_pts[i] for i in order]
-
-        # rota real
-        geom, dist_km, eta_min = osrm_route_geometry(ordered_pts)
-
-        clusters.append({
-            "id": cluster_id,
-            "points": [vars(p) for p in ordered_pts],
-            "order": order,
-            "geometry": geom
-        })
-
-        total_km += dist_km
-        total_eta += eta_min
-
-    result = {
-        "clusters": clusters,
-        "total_km": round(total_km, 3),
-        "total_eta_min": round(total_eta, 1)
+  li.querySelector('.geocode').onclick = async () => {
+    const addr = li.querySelector('.addr').value;
+    if (!addr) return;
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(addr)}&format=json&limit=1`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.length > 0) {
+      const { lat, lon, display_name } = data[0];
+      li.dataset.lat = lat;
+      li.dataset.lon = lon;
+      li.querySelector('.coords').textContent = `${lat}, ${lon}`;
+      li.querySelector('.addr').value = display_name;
+      renderMarkers();
+    } else {
+      alert("Endereço não encontrado!");
     }
+  };
 
-    print("DEBUG result:", json.dumps(result)[:500], file=sys.stderr, flush=True)
-    return result
+  document.getElementById('dest-list').appendChild(li);
+  renumber();
+  return li;
+}
+
+function renderMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  polylines.forEach(p => map.removeLayer(p));
+  polylines = [];
+
+  document.querySelectorAll('#dest-list li').forEach((li, i) => {
+    if (li.dataset.lat && li.dataset.lon) {
+      const lat = parseFloat(li.dataset.lat);
+      const lon = parseFloat(li.dataset.lon);
+      const marker = L.marker([lat, lon]).addTo(map).bindPopup(li.querySelector('.addr').value);
+      markers.push(marker);
+    }
+  });
+}
+
+async function optimize() {
+  const points = [];
+  document.querySelectorAll('#dest-list li').forEach(li => {
+    const lat = parseFloat(li.dataset.lat);
+    const lon = parseFloat(li.dataset.lon);
+    if (isFinite(lat) && isFinite(lon)) {
+      points.push({ id: li.dataset.id, lat, lon, addr: li.querySelector('.addr').value });
+    }
+  });
+
+  if (points.length < 2) {
+    alert('Adicione pelo menos 2 endereços.');
+    return;
+  }
+
+  const kStr = document.getElementById('k-input').value;
+  const k = kStr && kStr !== "auto" ? Number(kStr) : undefined;
+
+  const resp = await fetch('/optimize-route', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ points, k })
+  });
+  const data = await resp.json();
+  if (data.error) { alert(data.error); return; }
+
+  // Reordena lista
+  const destList = document.getElementById('dest-list');
+  destList.innerHTML = '';
+
+  data.clusters.forEach((c) => {
+    c.points.forEach((p, idx) => {
+      const li = addDestination(p.addr || "");
+      li.dataset.id = p.id;
+      li.dataset.lat = p.lat;
+      li.dataset.lon = p.lon;
+      li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`;
+      li.querySelector('.badge').textContent = String(idx + 1);
+    });
+
+    if (c.geometry && c.geometry.length > 1) {
+      const latlngs = c.geometry.map(([lon, lat]) => [lat, lon]);
+      const poly = L.polyline(latlngs, {color: 'blue'}).addTo(map);
+      polylines.push(poly);
+    }
+  });
+
+  document.getElementById('summary').innerHTML =
+    `<b>Distância total:</b> ${data.total_km} km — ` +
+    `<b>ETA total:</b> ${data.total_eta_min} min — ` +
+    `<b>Clusters:</b> ${data.clusters.length}`;
+
+  renderMarkers();
+}
