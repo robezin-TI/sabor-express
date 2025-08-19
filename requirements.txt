@@ -1,8 +1,5 @@
-flask==3.0.3
-flask-cors==4.0.1
-scikit-learn==1.5.1
-numpy==1.26.4
-pandas==2.2.2
-networkx==3.3
-geopy==2.4.1
-requests==2.32.3
+flask
+flask-cors
+requests
+numpy
+scikit-learn
