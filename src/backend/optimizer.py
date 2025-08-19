@@ -1,156 +1,127 @@
-from __future__ import annotations
-from dataclasses import dataclass
-from typing import List, Dict, Tuple, Optional
-import numpy as np
 import requests
+import numpy as np
 from sklearn.cluster import KMeans
+import sys
+import json
 
-OSRM_BASE = "http://router.project-osrm.org"  # pode trocar por seu servidor OSRM
-
-@dataclass
 class Point:
-    id: str
-    lat: float
-    lon: float
-    addr: str = ""
+    def __init__(self, id, lat, lon, addr=""):
+        self.id = id
+        self.lat = float(lat)
+        self.lon = float(lon)
+        self.addr = addr
 
-def to_np(points: List[Point]) -> np.ndarray:
-    return np.array([[p.lat, p.lon] for p in points], dtype=float)
-
-def kmeans_clusters(points: List[Point], k: int) -> Dict[int, List[Point]]:
-    if k <= 0 or k > len(points):
-        k = max(1, int(np.sqrt(len(points))))  # heurística simples
-    X = to_np(points)
-    model = KMeans(n_clusters=k, n_init="auto", random_state=42)
-    labels = model.fit_predict(X)
-    clusters: Dict[int, List[Point]] = {}
-    for lbl, p in zip(labels, points):
-        clusters.setdefault(int(lbl), []).append(p)
-    return clusters
-
-# --------- OSRM helpers ---------
-def _coord_str(points: List[Point]) -> str:
-    # OSRM exige "lon,lat"
-    return ";".join(f"{p.lon:.6f},{p.lat:.6f}" for p in points)
-
-def osrm_table(points: List[Point]) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Retorna (distance_m, duration_s) como matrizes NxN usando OSRM /table.
-    """
-    if len(points) == 1:
-        return np.zeros((1,1)), np.zeros((1,1))
-    coords = _coord_str(points)
-    url = f"{OSRM_BASE}/table/v1/driving/{coords}"
+# -----------------------------
+# Distâncias reais via OSRM
+# -----------------------------
+def osrm_table(points):
+    coords = ";".join([f"{p.lon},{p.lat}" for p in points])
+    url = f"http://router.project-osrm.org/table/v1/driving/{coords}"
     params = {"annotations": "distance,duration"}
-    r = requests.get(url, params=params, timeout=20)
-    r.raise_for_status()
-    data = r.json()
-    dist = np.array(data["distances"], dtype=float)  # metros
-    dur = np.array(data["durations"], dtype=float)   # segundos
-    # pode vir None quando OSRM não consegue conectar pontos (raro em áreas mapeadas)
-    dist = np.nan_to_num(dist, nan=1e9)
-    dur = np.nan_to_num(dur, nan=1e9)
-    return dist, dur
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        dist = np.array(data["distances"])
+        dur = np.array(data["durations"])
+        return dist, dur
+    except Exception as e:
+        print("OSRM error:", e, file=sys.stderr, flush=True)
+        # fallback → matriz grande para forçar outro caminho
+        n = len(points)
+        return np.ones((n, n)) * 1e6, np.ones((n, n)) * 1e6
 
-def osrm_route_geometry(points_ordered: List[Point]) -> Tuple[List[List[float]], float, float]:
-    """
-    Chama /route para a sequência final e retorna:
-      - geometry: lista [[lat, lon], ...]
-      - distance_km (float)
-      - duration_min (float)
-    """
-    if len(points_ordered) == 1:
-        p = points_ordered[0]
-        return [[p.lat, p.lon]], 0.0, 0.0
-    coords = _coord_str(points_ordered)
-    url = f"{OSRM_BASE}/route/v1/driving/{coords}"
-    params = {"overview": "full", "geometries": "geojson", "steps": "false"}
-    r = requests.get(url, params=params, timeout=30)
-    r.raise_for_status()
-    data = r.json()
-    route = data["routes"][0]
-    geom = route["geometry"]["coordinates"]  # [lon, lat]
-    # converter para [lat, lon] p/ Leaflet
-    latlon = [[xy[1], xy[0]] for xy in geom]
-    distance_km = float(route["distance"]) / 1000.0
-    duration_min = float(route["duration"]) / 60.0
-    return latlon, distance_km, duration_min
+def osrm_route_geometry(points_ordered):
+    coords = ";".join([f"{p.lon},{p.lat}" for p in points_ordered])
+    url = f"http://router.project-osrm.org/route/v1/driving/{coords}"
+    params = {"overview": "full", "geometries": "geojson"}
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        route = data["routes"][0]
+        geom = route["geometry"]["coordinates"]
+        return geom, route["distance"] / 1000.0, route["duration"] / 60.0
+    except Exception as e:
+        print("OSRM route error:", e, file=sys.stderr, flush=True)
+        # fallback → linhas retas
+        return [[p.lon, p.lat] for p in points_ordered], 0.0, 0.0
 
-# --------- TSP (usa a MATRIZ DE DURAÇÃO do OSRM) ---------
-def tsp_with_2opt_by_duration(points: List[Point], start_idx: int = 0) -> Tuple[List[int], float, float]:
-    """
-    Resolve TSP simples:
-      - vizinho mais próximo usando DURATIONS (s)
-      - melhoria 2-opt
-    Retorna (ordem_indices, total_distance_km, total_duration_min)
-    """
-    n = len(points)
-    if n <= 1:
-        return list(range(n)), 0.0, 0.0
+# -----------------------------
+# Heurística TSP
+# -----------------------------
+def tsp_nearest(dist_matrix):
+    n = len(dist_matrix)
+    if n == 0: return []
+    visited = [False] * n
+    order = [0]
+    visited[0] = True
+    for _ in range(n - 1):
+        last = order[-1]
+        next_city = np.argmin([
+            dist_matrix[last][j] if not visited[j] else np.inf
+            for j in range(n)
+        ])
+        order.append(next_city)
+        visited[next_city] = True
+    return order
 
-    Dm, Tm = osrm_table(points)   # metros, segundos
+# -----------------------------
+# Otimizador principal
+# -----------------------------
+def optimize(points, k=None):
+    if len(points) < 2:
+        return {"error": "Forneça pelo menos 2 pontos"}
 
-    # vizinho mais próximo minimizando duração
-    unvisited = set(range(n))
-    route = [start_idx]
-    unvisited.remove(start_idx)
-    while unvisited:
-        last = route[-1]
-        nxt = min(unvisited, key=lambda j: Tm[last, j])
-        route.append(nxt)
-        unvisited.remove(nxt)
+    X = np.array([[p.lat, p.lon] for p in points])
 
-    # 2-opt por duração
-    def cost(rt: List[int]) -> float:
-        return sum(Tm[rt[i], rt[i+1]] for i in range(len(rt)-1))
+    # define k clusters
+    if not k or k <= 0:
+        k = 1
+    elif k > len(points):
+        k = len(points)
 
-    best = route[:]
-    best_c = cost(best)
-    improved = True
-    while improved:
-        improved = False
-        for i in range(1, n - 2):
-            for j in range(i + 1, n - 1):
-                new_rt = best[:i] + best[i:j+1][::-1] + best[j+1:]
-                new_c = cost(new_rt)
-                if new_c + 1e-6 < best_c:
-                    best, best_c = new_rt, new_c
-                    improved = True
-                    break
-            if improved:
-                break
+    # clustering
+    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
+    labels = kmeans.fit_predict(X)
 
-    # somatórios reais a partir das matrizes
-    total_m = sum(Dm[best[i], best[i+1]] for i in range(n-1))
-    total_s = sum(Tm[best[i], best[i+1]] for i in range(n-1))
-    return best, total_m/1000.0, total_s/60.0
+    clusters = []
+    total_km = 0
+    total_eta = 0
 
-# --------- Função principal ---------
-def optimize(points: List[Point], k_clusters: Optional[int] = None) -> Dict:
-    clusters = kmeans_clusters(points, k_clusters or 0)
+    for cluster_id in range(k):
+        cluster_pts = [p for i, p in enumerate(points) if labels[i] == cluster_id]
 
-    result = {"clusters": [], "total_km": 0.0, "total_eta_min": 0.0}
-    for label, pts in clusters.items():
-        # ponto inicial = heurística simples: o mais "sudoeste" (ou poderia ser depósito)
-        start_idx = int(np.argmin([ (p.lat, p.lon) for p in pts ]))
+        if len(cluster_pts) < 2:
+            clusters.append({"id": cluster_id, "points": cluster_pts, "order": [0]})
+            continue
 
-        order_idx, length_km, eta_min = tsp_with_2opt_by_duration(pts, start_idx=start_idx)
-        ordered = [pts[i] for i in order_idx]
+        # matriz de distâncias
+        dist, dur = osrm_table(cluster_pts)
 
-        # rota final com geometria para desenhar nas ruas
-        geometry, route_km, route_min = osrm_route_geometry(ordered)
+        # ordem ótima (TSP)
+        order = tsp_nearest(dist)
 
-        result["clusters"].append({
-            "label": int(label),
-            "order": [p.id for p in ordered],
-            "points": [{"id": p.id, "lat": p.lat, "lon": p.lon, "addr": p.addr} for p in ordered],
-            "distance_km": round(route_km, 3),
-            "eta_min": round(route_min, 1),
-            "geometry": geometry  # lista [[lat,lon], ...]
+        ordered_pts = [cluster_pts[i] for i in order]
+
+        # rota real
+        geom, dist_km, eta_min = osrm_route_geometry(ordered_pts)
+
+        clusters.append({
+            "id": cluster_id,
+            "points": [vars(p) for p in ordered_pts],
+            "order": order,
+            "geometry": geom
         })
-        result["total_km"] += route_km
-        result["total_eta_min"] += route_min
 
-    result["total_km"] = round(result["total_km"], 3)
-    result["total_eta_min"] = round(result["total_eta_min"], 1)
+        total_km += dist_km
+        total_eta += eta_min
+
+    result = {
+        "clusters": clusters,
+        "total_km": round(total_km, 3),
+        "total_eta_min": round(total_eta, 1)
+    }
+
+    print("DEBUG result:", json.dumps(result)[:500], file=sys.stderr, flush=True)
     return result
