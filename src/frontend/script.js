@@ -21,15 +21,12 @@ function initMap() {
   });
 }
 
-function genId() {
-  return Math.random().toString(36).slice(2, 7);
-}
+function genId() { return Math.random().toString(36).slice(2, 7); }
 
 function addDestination(address = '') {
   const li = document.createElement('li');
   li.draggable = true;
   li.dataset.id = genId();
-
   li.innerHTML = `
     <span class="badge">#</span>
     <input class="addr" type="text" placeholder="Digite um endereço" value="${address}">
@@ -37,33 +34,18 @@ function addDestination(address = '') {
     <button class="remove" title="Remover">🗑️</button>
     <div class="coords"></div>
   `;
-
-  // drag & drop
   li.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', li.dataset.id));
   li.addEventListener('dragover', e => e.preventDefault());
-  li.addEventListener('drop', e => {
-    e.preventDefault();
+  li.addEventListener('drop', e => { e.preventDefault();
     const id = e.dataTransfer.getData('text/plain');
     const dragged = document.querySelector(`li[data-id="${id}"]`);
-    li.parentNode.insertBefore(dragged, li);
-    renumber();
+    li.parentNode.insertBefore(dragged, li); renumber();
   });
-
   li.querySelector('.remove').onclick = () => { li.remove(); renumber(); };
-
-  // geocodificar por clique
-  li.querySelector('.geocode').onclick = async () => {
-    await ensureCoordinates(li);
-  };
-
-  // Enter no campo de endereço também geocodifica
+  li.querySelector('.geocode').onclick = async () => { await ensureCoordinates(li); };
   li.querySelector('.addr').addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      await ensureCoordinates(li);
-    }
+    if (e.key === 'Enter') { e.preventDefault(); await ensureCoordinates(li); }
   });
-
   document.getElementById('dest-list').appendChild(li);
   renumber();
   return li;
@@ -94,7 +76,6 @@ function renderMarkers() {
         li.dataset.lat = p.lat;
         li.dataset.lon = p.lng;
         li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
-        // opcional: atualizar endereço pelo reverse geocode ao arrastar
         const addr = await reverseGeocode(p.lat, p.lng);
         if (addr) li.querySelector('.addr').value = addr;
         renumber();
@@ -124,27 +105,16 @@ async function reverseGeocode(lat, lon) {
 }
 
 async function ensureCoordinates(li) {
-  // já tem coordenadas?
   const has = isFinite(parseFloat(li.dataset.lat)) && isFinite(parseFloat(li.dataset.lon));
   if (has) return true;
-
   const addr = li.querySelector('.addr').value.trim();
-  if (!addr) {
-    alert('Digite um endereço.');
-    return false;
-  }
+  if (!addr) { alert('Digite um endereço.'); return false; }
   const g = await geocode(addr);
-  if (!g) {
-    alert('Endereço não encontrado.');
-    return false;
-  }
+  if (!g) { alert('Endereço não encontrado.'); return false; }
   li.dataset.lat = g.lat;
   li.dataset.lon = g.lon;
   li.querySelector('.coords').textContent = `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}`;
-  // se o display_name veio melhor que o texto digitado, atualiza
-  if (g.display && g.display.length > addr.length) {
-    li.querySelector('.addr').value = g.display;
-  }
+  if (g.display && g.display.length > addr.length) li.querySelector('.addr').value = g.display;
   renderMarkers();
   return true;
 }
@@ -160,67 +130,57 @@ async function ensureAllCoordinates() {
 
 async function optimize() {
   const btn = document.getElementById('optimize');
-  btn.disabled = true;
-  btn.textContent = 'Otimizando...';
+  btn.disabled = true; btn.textContent = 'Otimizando...';
 
-  // garante que todos os itens têm coordenadas
   const ready = await ensureAllCoordinates();
-  if (!ready) {
-    btn.disabled = false; btn.textContent = 'Otimizar rota';
-    return;
-  }
+  if (!ready) { btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
 
   const points = [];
   document.querySelectorAll('#dest-list li').forEach((li) => {
     const lat = parseFloat(li.dataset.lat);
     const lon = parseFloat(li.dataset.lon);
     const addr = li.querySelector('.addr').value;
-    if (isFinite(lat) && isFinite(lon)) {
-      points.push({ id: li.dataset.id, lat, lon, addr });
-    }
+    if (isFinite(lat) && isFinite(lon)) points.push({ id: li.dataset.id, lat, lon, addr });
   });
-
-  if (points.length < 2) {
-    alert('Adicione pelo menos 2 endereços.');
-    btn.disabled = false; btn.textContent = 'Otimizar rota';
-    return;
-  }
+  if (points.length < 2) { alert('Adicione pelo menos 2 endereços.'); btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
 
   const kStr = document.getElementById('k-input').value;
   const k = kStr ? Number(kStr) : undefined;
 
   const resp = await fetch('/optimize-route', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
+    method: 'POST', headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ points, k })
   });
   const data = await resp.json();
-  if (data.error) { alert(data.error); return; }
+  if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
 
-  // Reconstroi a lista já na ordem otimizada (cluster por cluster)
+  // Reconstroi a lista na ordem ótima e desenha as polylines retornadas
   const destList = document.getElementById('dest-list');
   destList.innerHTML = '';
-  data.clusters.forEach((c) => {
+  layerGroup.clearLayers();
+  markers = []; polylines = [];
+
+  const palette = ['#3366cc','#dc3912','#ff9900','#109618','#990099','#0099c6','#dd4477'];
+
+  data.clusters.forEach((c, idx) => {
+    // recria lista na ordem
     c.points.forEach(p => {
       const li = addDestination(p.addr || '');
-      li.dataset.id = p.id;  // preserva ID
+      li.dataset.id = p.id;
       li.dataset.lat = p.lat;
       li.dataset.lon = p.lon;
       li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`;
     });
-  });
 
-  // Desenha as polylines (uma por cluster, com cores diferentes)
-  layerGroup.clearLayers();
-  markers = []; polylines = [];
-  const palette = ['#3366cc','#dc3912','#ff9900','#109618','#990099','#0099c6','#dd4477'];
-
-  data.clusters.forEach((c, idx) => {
+    // desenha a rota pelas ruas (geometria do OSRM)
     const color = palette[idx % palette.length];
-    const latlngs = c.points.map(p => [p.lat, p.lon]);
-    const poly = L.polyline(latlngs, { weight: 5, opacity: 0.8, color }).addTo(layerGroup);
-    polylines.push(poly);
-    // recoloca marcadores numerados na ordem
+    if (Array.isArray(c.geometry) && c.geometry.length > 1) {
+      const poly = L.polyline(c.geometry, { weight: 5, opacity: 0.85, color }).addTo(layerGroup);
+      polylines.push(poly);
+      map.fitBounds(poly.getBounds(), { padding: [20, 20] });
+    }
+
+    // marcadores numerados na ordem
     c.points.forEach((p, i) => {
       const m = L.marker([p.lat, p.lon]).addTo(layerGroup);
       m.bindTooltip(String(i + 1), { permanent: true, direction: 'top' }).openTooltip();
@@ -233,8 +193,7 @@ async function optimize() {
     `<b>ETA total:</b> ${data.total_eta_min} min — ` +
     `<b>Clusters:</b> ${data.clusters.length}`;
 
-  btn.disabled = false;
-  btn.textContent = 'Otimizar rota';
+  btn.disabled = false; btn.textContent = 'Otimizar rota';
 }
 
 function bindUI() {
