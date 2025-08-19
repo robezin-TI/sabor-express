@@ -1,214 +1,127 @@
-let map, layerGroup, drawMode = false;
-let markers = [];
-let polylines = [];
+import requests
+import numpy as np
+from sklearn.cluster import KMeans
+import sys
+import json
 
-function initMap() {
-  map = L.map('map').setView([-23.68, -46.85], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19, attribution: '&copy; OpenStreetMap'
-  }).addTo(map);
-  layerGroup = L.layerGroup().addTo(map);
+class Point:
+    def __init__(self, id, lat, lon, addr=""):
+        self.id = id
+        self.lat = float(lat)
+        self.lon = float(lon)
+        self.addr = addr
 
-  map.on('click', async (e) => {
-    if (!drawMode) return;
-    const { lat, lng } = e.latlng;
-    const addr = await reverseGeocode(lat, lng);
-    const li = addDestination(addr || '');
-    li.dataset.lat = lat;
-    li.dataset.lon = lng;
-    li.querySelector('.coords').textContent = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-    renderMarkers();
-  });
-}
+# -----------------------------
+# Distâncias reais via OSRM
+# -----------------------------
+def osrm_table(points):
+    coords = ";".join([f"{p.lon},{p.lat}" for p in points])
+    url = f"http://router.project-osrm.org/table/v1/driving/{coords}"
+    params = {"annotations": "distance,duration"}
+    try:
+        r = requests.get(url, params=params, timeout=10)
+        r.raise_for_status()
+        data = r.json()
+        dist = np.array(data["distances"])
+        dur = np.array(data["durations"])
+        return dist, dur
+    except Exception as e:
+        print("OSRM error:", e, file=sys.stderr, flush=True)
+        # fallback → matriz grande para forçar outro caminho
+        n = len(points)
+        return np.ones((n, n)) * 1e6, np.ones((n, n)) * 1e6
 
-function genId() { return Math.random().toString(36).slice(2, 7); }
+def osrm_route_geometry(points_ordered):
+    coords = ";".join([f"{p.lon},{p.lat}" for p in points_ordered])
+    url = f"http://router.project-osrm.org/route/v1/driving/{coords}"
+    params = {"overview": "full", "geometries": "geojson"}
+    try:
+        r = requests.get(url, params=params, timeout=15)
+        r.raise_for_status()
+        data = r.json()
+        route = data["routes"][0]
+        geom = route["geometry"]["coordinates"]
+        return geom, route["distance"] / 1000.0, route["duration"] / 60.0
+    except Exception as e:
+        print("OSRM route error:", e, file=sys.stderr, flush=True)
+        # fallback → linhas retas
+        return [[p.lon, p.lat] for p in points_ordered], 0.0, 0.0
 
-function addDestination(address = '') {
-  const li = document.createElement('li');
-  li.draggable = true;
-  li.dataset.id = genId();
-  li.innerHTML = `
-    <span class="badge">#</span>
-    <input class="addr" type="text" placeholder="Digite um endereço" value="${address}">
-    <button class="geocode" title="Buscar coordenadas">🔍</button>
-    <button class="remove" title="Remover">🗑️</button>
-    <div class="coords"></div>
-  `;
-  li.addEventListener('dragstart', e => e.dataTransfer.setData('text/plain', li.dataset.id));
-  li.addEventListener('dragover', e => e.preventDefault());
-  li.addEventListener('drop', e => { e.preventDefault();
-    const id = e.dataTransfer.getData('text/plain');
-    const dragged = document.querySelector(`li[data-id="${id}"]`);
-    li.parentNode.insertBefore(dragged, li); renumber();
-  });
-  li.querySelector('.remove').onclick = () => { li.remove(); renumber(); };
-  li.querySelector('.geocode').onclick = async () => { await ensureCoordinates(li); };
-  li.querySelector('.addr').addEventListener('keydown', async (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); await ensureCoordinates(li); }
-  });
-  document.getElementById('dest-list').appendChild(li);
-  renumber();
-  return li;
-}
+# -----------------------------
+# Heurística TSP
+# -----------------------------
+def tsp_nearest(dist_matrix):
+    n = len(dist_matrix)
+    if n == 0: return []
+    visited = [False] * n
+    order = [0]
+    visited[0] = True
+    for _ in range(n - 1):
+        last = order[-1]
+        next_city = np.argmin([
+            dist_matrix[last][j] if not visited[j] else np.inf
+            for j in range(n)
+        ])
+        order.append(next_city)
+        visited[next_city] = True
+    return order
 
-function renumber() {
-  document.querySelectorAll('#dest-list li').forEach((li, idx) => {
-    li.querySelector('.badge').textContent = String(idx + 1);
-  });
-  renderMarkers();
-}
+# -----------------------------
+# Otimizador principal
+# -----------------------------
+def optimize(points, k=None):
+    if len(points) < 2:
+        return {"error": "Forneça pelo menos 2 pontos"}
 
-function clearMapLayers() {
-  layerGroup.clearLayers();
-  polylines = [];
-  markers = [];
-}
+    X = np.array([[p.lat, p.lon] for p in points])
 
-function renderMarkers() {
-  clearMapLayers();
-  document.querySelectorAll('#dest-list li').forEach((li, idx) => {
-    const lat = parseFloat(li.dataset.lat);
-    const lon = parseFloat(li.dataset.lon);
-    if (isFinite(lat) && isFinite(lon)) {
-      const m = L.marker([lat, lon], { draggable: true }).addTo(layerGroup);
-      m.on('dragend', async () => {
-        const p = m.getLatLng();
-        li.dataset.lat = p.lat;
-        li.dataset.lon = p.lng;
-        li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
-        const addr = await reverseGeocode(p.lat, p.lng);
-        if (addr) li.querySelector('.addr').value = addr;
-        renumber();
-      });
-      m.bindTooltip(String(idx + 1), { permanent: true, direction: 'top' }).openTooltip();
-      markers.push(m);
-    }
-  });
-}
+    # define k clusters
+    if not k or k <= 0:
+        k = 1
+    elif k > len(points):
+        k = len(points)
 
-async function geocode(address) {
-  if (!address) return null;
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }});
-  if (!res.ok) return null;
-  const data = await res.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
-  return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon), display: data[0].display_name };
-}
+    # clustering
+    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
+    labels = kmeans.fit_predict(X)
 
-async function reverseGeocode(lat, lon) {
-  const url = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`;
-  const res = await fetch(url, { headers: { 'Accept-Language': 'pt-BR' }});
-  if (!res.ok) return '';
-  const data = await res.json();
-  return data.display_name || '';
-}
+    clusters = []
+    total_km = 0
+    total_eta = 0
 
-async function ensureCoordinates(li) {
-  const has = isFinite(parseFloat(li.dataset.lat)) && isFinite(parseFloat(li.dataset.lon));
-  if (has) return true;
-  const addr = li.querySelector('.addr').value.trim();
-  if (!addr) { alert('Digite um endereço.'); return false; }
-  const g = await geocode(addr);
-  if (!g) { alert('Endereço não encontrado.'); return false; }
-  li.dataset.lat = g.lat;
-  li.dataset.lon = g.lon;
-  li.querySelector('.coords').textContent = `${g.lat.toFixed(6)}, ${g.lon.toFixed(6)}`;
-  if (g.display && g.display.length > addr.length) li.querySelector('.addr').value = g.display;
-  renderMarkers();
-  return true;
-}
+    for cluster_id in range(k):
+        cluster_pts = [p for i, p in enumerate(points) if labels[i] == cluster_id]
 
-async function ensureAllCoordinates() {
-  const items = Array.from(document.querySelectorAll('#dest-list li'));
-  for (const li of items) {
-    const ok = await ensureCoordinates(li);
-    if (!ok) return false;
-  }
-  return true;
-}
+        if len(cluster_pts) < 2:
+            clusters.append({"id": cluster_id, "points": cluster_pts, "order": [0]})
+            continue
 
-async function optimize() {
-  const btn = document.getElementById('optimize');
-  btn.disabled = true; btn.textContent = 'Otimizando...';
+        # matriz de distâncias
+        dist, dur = osrm_table(cluster_pts)
 
-  const ready = await ensureAllCoordinates();
-  if (!ready) { btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
+        # ordem ótima (TSP)
+        order = tsp_nearest(dist)
 
-  const points = [];
-  document.querySelectorAll('#dest-list li').forEach((li) => {
-    const lat = parseFloat(li.dataset.lat);
-    const lon = parseFloat(li.dataset.lon);
-    const addr = li.querySelector('.addr').value;
-    if (isFinite(lat) && isFinite(lon)) points.push({ id: li.dataset.id, lat, lon, addr });
-  });
-  if (points.length < 2) { alert('Adicione pelo menos 2 endereços.'); btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
+        ordered_pts = [cluster_pts[i] for i in order]
 
-  const kStr = document.getElementById('k-input').value;
-  const k = kStr ? Number(kStr) : undefined;
+        # rota real
+        geom, dist_km, eta_min = osrm_route_geometry(ordered_pts)
 
-  const resp = await fetch('/optimize-route', {
-    method: 'POST', headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ points, k })
-  });
-  const data = await resp.json();
-  if (data.error) { alert(data.error); btn.disabled = false; btn.textContent = 'Otimizar rota'; return; }
+        clusters.append({
+            "id": cluster_id,
+            "points": [vars(p) for p in ordered_pts],
+            "order": order,
+            "geometry": geom
+        })
 
-  // Reconstroi a lista na ordem ótima e desenha as polylines retornadas
-  const destList = document.getElementById('dest-list');
-  destList.innerHTML = '';
-  layerGroup.clearLayers();
-  markers = []; polylines = [];
+        total_km += dist_km
+        total_eta += eta_min
 
-  const palette = ['#3366cc','#dc3912','#ff9900','#109618','#990099','#0099c6','#dd4477'];
-
-  data.clusters.forEach((c, idx) => {
-    // recria lista na ordem
-    c.points.forEach(p => {
-      const li = addDestination(p.addr || '');
-      li.dataset.id = p.id;
-      li.dataset.lat = p.lat;
-      li.dataset.lon = p.lon;
-      li.querySelector('.coords').textContent = `${p.lat.toFixed(6)}, ${p.lon.toFixed(6)}`;
-    });
-
-    // desenha a rota pelas ruas (geometria do OSRM)
-    const color = palette[idx % palette.length];
-    if (Array.isArray(c.geometry) && c.geometry.length > 1) {
-      const poly = L.polyline(c.geometry, { weight: 5, opacity: 0.85, color }).addTo(layerGroup);
-      polylines.push(poly);
-      map.fitBounds(poly.getBounds(), { padding: [20, 20] });
+    result = {
+        "clusters": clusters,
+        "total_km": round(total_km, 3),
+        "total_eta_min": round(total_eta, 1)
     }
 
-    // marcadores numerados na ordem
-    c.points.forEach((p, i) => {
-      const m = L.marker([p.lat, p.lon]).addTo(layerGroup);
-      m.bindTooltip(String(i + 1), { permanent: true, direction: 'top' }).openTooltip();
-      markers.push(m);
-    });
-  });
-
-  document.getElementById('summary').innerHTML =
-    `<b>Distância total:</b> ${data.total_km} km — ` +
-    `<b>ETA total:</b> ${data.total_eta_min} min — ` +
-    `<b>Clusters:</b> ${data.clusters.length}`;
-
-  btn.disabled = false; btn.textContent = 'Otimizar rota';
-}
-
-function bindUI() {
-  document.getElementById('add-dest').onclick = () => addDestination();
-  document.getElementById('use-map').onclick = (e) => {
-    drawMode = !drawMode;
-    e.target.textContent = drawMode ? 'Parar clique no mapa' : 'Clique no mapa';
-  };
-  document.getElementById('optimize').onclick = optimize;
-  document.getElementById('clear').onclick = () => {
-    document.getElementById('dest-list').innerHTML = '';
-    document.getElementById('summary').textContent = '';
-    clearMapLayers();
-  };
-}
-
-initMap();
-bindUI();
+    print("DEBUG result:", json.dumps(result)[:500], file=sys.stderr, flush=True)
+    return result
