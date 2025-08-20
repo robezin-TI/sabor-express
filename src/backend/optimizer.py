@@ -1,118 +1,82 @@
-import requests
-import numpy as np
+import osmnx as ox
+import networkx as nx
 from sklearn.cluster import KMeans
-import sys
-import json
+import itertools
+import math
 
-class Point:
-    def __init__(self, id, lat, lon, addr=""):
-        self.id = id
-        self.lat = float(lat)
-        self.lon = float(lon)
-        self.addr = addr
+# Velocidade média do entregador (km/h)
+AVG_SPEED = 30  
 
-# -----------------------------
-# Distâncias reais via OSRM
-# -----------------------------
-def osrm_table(points):
-    coords = ";".join([f"{p.lon},{p.lat}" for p in points])
-    url = f"http://router.project-osrm.org/table/v1/driving/{coords}"
-    params = {"annotations": "distance,duration"}
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        r.raise_for_status()
-        data = r.json()
-        dist = np.array(data["distances"])
-        dur = np.array(data["durations"])
-        return dist, dur
-    except Exception as e:
-        print("OSRM error:", e, file=sys.stderr, flush=True)
-        n = len(points)
-        return np.ones((n, n)) * 1e6, np.ones((n, n)) * 1e6
+def haversine(coord1, coord2):
+    """Distância geodésica aproximada em km."""
+    R = 6371
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
+    return 2 * R * math.asin(math.sqrt(a))
 
-def osrm_route_geometry(points_ordered):
-    coords = ";".join([f"{p.lon},{p.lat}" for p in points_ordered])
-    url = f"http://router.project-osrm.org/route/v1/driving/{coords}"
-    params = {"overview": "full", "geometries": "geojson"}
-    try:
-        r = requests.get(url, params=params, timeout=15)
-        r.raise_for_status()
-        data = r.json()
-        route = data["routes"][0]
-        geom = route["geometry"]["coordinates"]
-        return geom, route["distance"] / 1000.0, route["duration"] / 60.0
-    except Exception as e:
-        print("OSRM route error:", e, file=sys.stderr, flush=True)
-        return [[p.lon, p.lat] for p in points_ordered], 0.0, 0.0
+def optimize(addresses, clusters=1):
+    if not addresses:
+        return {"error": "Nenhum endereço fornecido"}
 
-# -----------------------------
-# Heurística TSP
-# -----------------------------
-def tsp_nearest(dist_matrix):
-    n = len(dist_matrix)
-    if n == 0: return []
-    visited = [False] * n
-    order = [0]
-    visited[0] = True
-    for _ in range(n - 1):
-        last = order[-1]
-        next_city = np.argmin([
-            dist_matrix[last][j] if not visited[j] else np.inf
-            for j in range(n)
-        ])
-        order.append(next_city)
-        visited[next_city] = True
-    return order
+    # Cria grafo da região (dirigível)
+    G = ox.graph_from_place("Itapecerica da Serra, Brazil", network_type="drive")
 
-# -----------------------------
-# Otimizador principal
-# -----------------------------
-def optimize(points, k=None):
-    if len(points) < 2:
-        return {"error": "Forneça pelo menos 2 pontos"}
+    # Coordenadas
+    coords = [tuple(addr["coords"]) for addr in addresses]
 
-    X = np.array([[p.lat, p.lon] for p in points])
+    # Clusterização
+    if clusters > 1:
+        kmeans = KMeans(n_clusters=clusters, random_state=42, n_init=10)
+        labels = kmeans.fit_predict(coords)
+    else:
+        labels = [0] * len(coords)
 
-    if not k or k <= 0:
-        k = 1
-    elif k > len(points):
-        k = len(points)
+    optimized_routes = []
+    total_distance = 0
+    total_time = 0
 
-    kmeans = KMeans(n_clusters=k, n_init=10, random_state=42)
-    labels = kmeans.fit_predict(X)
+    for cluster_id in set(labels):
+        cluster_points = [coords[i] for i in range(len(coords)) if labels[i] == cluster_id]
 
-    clusters = []
-    total_km = 0
-    total_eta = 0
+        # TSP: testa todas permutações
+        best_route = None
+        best_distance = float("inf")
 
-    for cluster_id in range(k):
-        cluster_pts = [p for i, p in enumerate(points) if labels[i] == cluster_id]
+        for perm in itertools.permutations(cluster_points):
+            dist = 0
+            path_segments = []
 
-        if len(cluster_pts) < 2:
-            clusters.append({"id": cluster_id, "points": [vars(p) for p in cluster_pts], "order": [0]})
-            continue
+            for i in range(len(perm) - 1):
+                orig_node = ox.distance.nearest_nodes(G, perm[i][1], perm[i][0])
+                dest_node = ox.distance.nearest_nodes(G, perm[i+1][1], perm[i+1][0])
 
-        dist, dur = osrm_table(cluster_pts)
-        order = tsp_nearest(dist)
-        ordered_pts = [cluster_pts[i] for i in order]
+                # Rota com A*
+                route = nx.astar_path(G, orig_node, dest_node, weight="length")
+                length = sum(ox.utils_graph.get_route_edge_attributes(G, route, 'length'))
+                dist += length / 1000  # metros -> km
+                path_segments.append(ox.utils_graph.route_to_geometry(G, route))
 
-        geom, dist_km, eta_min = osrm_route_geometry(ordered_pts)
+            if dist < best_distance:
+                best_distance = dist
+                best_route = {"order": perm, "geometry": [list(seg.coords) for seg in path_segments]}
 
-        clusters.append({
-            "id": cluster_id,
-            "points": [vars(p) for p in ordered_pts],
-            "order": order,
-            "geometry": geom
+        eta = (best_distance / AVG_SPEED) * 60  # min
+        total_distance += best_distance
+        total_time += eta
+
+        optimized_routes.append({
+            "cluster": cluster_id,
+            "distance_km": round(best_distance, 2),
+            "eta_min": round(eta, 1),
+            "route": best_route
         })
 
-        total_km += dist_km
-        total_eta += eta_min
-
-    result = {
-        "clusters": clusters,
-        "total_km": round(total_km, 3),
-        "total_eta_min": round(total_eta, 1)
+    return {
+        "clusters": len(set(labels)),
+        "total_distance_km": round(total_distance, 2),
+        "total_eta_min": round(total_time, 1),
+        "routes": optimized_routes
     }
-
-    print("DEBUG result:", json.dumps(result)[:500], file=sys.stderr, flush=True)
-    return result
