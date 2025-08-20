@@ -1,47 +1,31 @@
-import os
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from src.backend.optimizer import Point, optimize
+from src.backend.optimizer import optimize
+from src.backend.geo import geocode_address
+import os
 
-# cria o app apontando para a pasta do frontend
-app = Flask(__name__, static_folder="../frontend", static_url_path="/")
+app = Flask(__name__, static_folder="../frontend", static_url_path="")
 CORS(app)
 
-# -----------------------------
-# rota principal -> index.html
-# -----------------------------
 @app.route("/")
 def index():
-    return app.send_static_file("index.html")
+    return send_from_directory(app.static_folder, "index.html")
 
-# -----------------------------
-# rota da API -> otimização
-# -----------------------------
-@app.route("/optimize-route", methods=["POST"])
+@app.route("/api/geocode", methods=["POST"])
+def geocode():
+    data = request.get_json()
+    address = data.get("address")
+    coords = geocode_address(address)
+    return jsonify({"coords": coords})
+
+@app.route("/api/optimize", methods=["POST"])
 def optimize_route():
-    try:
-        data = request.get_json(force=True)
-        points_data = data.get("points", [])
-        k = data.get("k")
+    data = request.get_json()
+    addresses = data.get("addresses", [])
+    clusters = int(data.get("clusters", 1))
+    result = optimize(addresses, clusters)
+    return jsonify(result)
 
-        points = [Point(p["id"], p["lat"], p["lon"], p.get("addr", "")) for p in points_data]
-        result = optimize(points, k)
-
-        return jsonify(result)
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-# -----------------------------
-# servir arquivos estáticos (JS, CSS, etc.)
-# -----------------------------
-@app.route("/<path:path>")
-def static_files(path):
-    file_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-    return send_from_directory(file_dir, path)
-
-# -----------------------------
-# entrypoint
-# -----------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)
