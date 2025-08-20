@@ -1,6 +1,8 @@
 flask
 flask-cors
-osmnx
-networkx
-scikit-learn
 requests
+geopy
+scikit-learn
+networkx
+osmnx
+pandas
