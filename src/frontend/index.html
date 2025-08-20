@@ -1,37 +1,28 @@
 <!DOCTYPE html>
-<html lang="pt-br">
+<html lang="pt-BR">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Rota Inteligente</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <link rel="stylesheet" href="style.css"/>
+    <meta charset="UTF-8">
+    <title>Otimizador de Rotas</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 </head>
 <body>
-  <header>
-    <h1>Rota Inteligente</h1>
-    <p>Adicione endereços, reordene e otimize rotas por cluster (K-Means).</p>
-  </header>
+    <h2>Sabor Express - Otimizador de Rotas</h2>
 
-  <main>
-    <section id="panel">
-      <div class="controls">
+    <div class="controls">
         <label>Clusters (motoboys):</label>
-        <input id="k-input" type="number" min="1" placeholder="auto"/>
-        <button id="add-dest">+ Adicionar endereço</button>
-        <button id="use-map">Clique no mapa</button>
-        <button id="optimize">Otimizar rota</button>
-        <button id="clear">Limpar</button>
-      </div>
+        <input id="clusters" type="number" value="1" min="1"/>
 
-      <ul id="dest-list"></ul>
-      <div id="summary"></div>
-    </section>
+        <button onclick="addAddressField()">+ Adicionar endereço</button>
+        <button onclick="enableMapClick()">Clique no mapa</button>
+        <button onclick="optimizeRoute()">Otimizar rota</button>
+        <button onclick="clearAll()">Limpar</button>
+    </div>
 
-    <section id="map"></section>
-  </main>
+    <div id="addresses"></div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="script.js"></script>
-</body>
-</html>
+    <p id="summary"></p>
+
+    <div id="map"></div>
+
+    <script src="htt
