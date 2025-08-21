@@ -1,9 +1,0 @@
-html, body { height: 100%; margin: 0; font-family: system-ui, Arial, sans-serif; }
-#map { position: absolute; top: 70px; left: 320px; right: 0; bottom: 0; }
-.toolbar { position: absolute; top: 8px; left: 8px; right: 8px; height: 50px; display: flex; gap: 8px; align-items: center; z-index: 1000; }
-.panel { position: absolute; top: 70px; left: 8px; width: 300px; bottom: 8px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px; z-index: 1000; overflow: auto; }
-.address { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
-.address .idx { background:#2b7cff; color:#fff; border-radius: 10px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; }
-.address input { flex:1; padding:6px; border:1px solid #ccc; border-radius:6px; font-size: 12px; }
-.address button { border:1px solid #ccc; background:#f8f8f8; border-radius:6px; padding:6px 8px; cursor:pointer; }
-#summary { margin-top: 10px; font-weight: bold; }
