@@ -1,174 +1,136 @@
-// --------- MAPA ---------
-const map = L.map('map').setView([-23.716, -46.849], 12);
+let map = L.map('map').setView([-23.55, -46.63], 12);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap contributors'
+  attribution: '&copy; OpenStreetMap contributors'
 }).addTo(map);
 
-let addresses = [];   // {label, coords:[lat,lon], input:HTMLInputElement}
-let markers = [];
-let polylines = [];
+let clickMode = false;
+let markers = [];   // [{marker, lat, lon, label}]
+let polyline = null;
 
-const elList = document.getElementById('addressList');
-const elSummary = document.getElementById('summary');
-
-document.getElementById('btnAdd').onclick = () => addAddressRow();
-document.getElementById('btnMapClick').onclick = enableMapClick;
-document.getElementById('btnOptimize').onclick = optimizeRoute;
-document.getElementById('btnClear').onclick = clearAll;
-
-function divIconNumber(n){
+// helpers
+function numberIcon(n) {
   return L.divIcon({
-    className: 'custom-div-icon',
-    html: `<div class="marker-number">${n}</div>`,
-    iconSize: [30, 42],
-    iconAnchor: [15, 42]
+    className: 'num-icon',
+    html: `<div style="
+      background:#2b7cff;color:white;border-radius:14px;
+      width:28px;height:28px;display:flex;align-items:center;justify-content:center;
+      border:2px solid white; box-shadow: 0 0 4px rgba(0,0,0,.2);
+      font-weight:600;">${n}</div>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 28]
   });
 }
 
-function refreshMarkers(){
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-  addresses.forEach((a, i) => {
-    if(a.coords){
-      const m = L.marker([a.coords[0], a.coords[1]], {icon: divIconNumber(i+1)}).addTo(map);
-      markers.push(m);
-    }
+function refreshMarkers() {
+  markers.forEach((m, i) => m.marker.setIcon(numberIcon(i+1)));
+  renderList();
+}
+
+function renderList() {
+  const wrap = document.getElementById('addresses');
+  wrap.innerHTML = '';
+  markers.forEach((m, i) => {
+    const row = document.createElement('div');
+    row.className = 'address';
+    row.innerHTML = `
+      <div class="idx">${i+1}</div>
+      <input type="text" value="${m.label}" readonly />
+      <button data-i="${i}" class="zoom">Ir</button>
+      <button data-i="${i}" class="del">X</button>
+    `;
+    wrap.appendChild(row);
+  });
+
+  // eventos
+  wrap.querySelectorAll('.zoom').forEach(btn => {
+    btn.onclick = () => {
+      const i = parseInt(btn.dataset.i);
+      map.setView([markers[i].lat, markers[i].lon], 16);
+      markers[i].marker.openPopup();
+    };
+  });
+  wrap.querySelectorAll('.del').forEach(btn => {
+    btn.onclick = () => {
+      const i = parseInt(btn.dataset.i);
+      map.removeLayer(markers[i].marker);
+      markers.splice(i,1);
+      if (polyline) { map.removeLayer(polyline); polyline = null; }
+      refreshMarkers();
+    };
   });
 }
 
-function drawPolylines(routes){
-  polylines.forEach(p => map.removeLayer(p));
-  polylines = [];
-  routes.forEach(r => {
-    r.legs.forEach(leg => {
-      const latlngs = leg.polyline.map(p => [p[0], p[1]]);
-      polylines.push(L.polyline(latlngs).addTo(map));
-    });
+async function addAddress(address) {
+  const res = await fetch('/geocode', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({address})
   });
-}
-
-function addAddressRow(prefill=""){
-  const idx = addresses.length + 1;
-  const row = document.createElement('div');
-  row.className = 'row';
-  row.innerHTML = `
-    <span class="badge">${idx}</span>
-    <input type="text" placeholder="Endereço ou 'lat, lon'" value="${prefill}">
-    <button class="pill mini">🔍</button>
-    <button class="pill mini">🗑️</button>
-  `;
-  elList.appendChild(row);
-
-  const input = row.querySelector('input');
-  const btnGo = row.querySelectorAll('button')[0];
-  const btnDel = row.querySelectorAll('button')[1];
-
-  addresses.push({label: "", coords: null, input});
-
-  btnGo.onclick = async () => {
-    const raw = input.value.trim();
-    if(!raw) return;
-
-    // aceita "lat, lon" direto
-    const latlon = raw.match(/^\s*(-?\d+(\.\d+)?)\s*,\s*(-?\d+(\.\d+)?)\s*$/);
-    if(latlon){
-      const lat = parseFloat(latlon[1]), lon = parseFloat(latlon[3]);
-      setAddressCoords(input, [lat, lon], raw);
-      return;
-    }
-
-    const r = await fetch('/api/geocode', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({address: raw})
-    });
-    const j = await r.json();
-    if(j.coords){
-      setAddressCoords(input, j.coords, raw);
-    }else{
-      alert("Endereço não encontrado.");
-    }
-  };
-
-  btnDel.onclick = () => {
-    addresses = addresses.filter(a => a.input !== input);
-    elList.removeChild(row);
-    reindexListBadges();
-    refreshMarkers();
-    drawPolylines([]); // limpa rotas se necessário
-  };
-}
-
-function setAddressCoords(inputEl, coords, label){
-  const i = addresses.findIndex(a => a.input === inputEl);
-  if(i >= 0){
-    addresses[i].coords = coords;
-    addresses[i].label = label;
-  }
-  refreshMarkers();
-  map.setView([coords[0], coords[1]], 14);
-}
-
-function reindexListBadges(){
-  [...document.querySelectorAll('#addressList .row .badge')]
-    .forEach((b, i) => b.textContent = (i+1));
-}
-
-function enableMapClick(){
-  map.once('click', e => {
-    const lat = e.latlng.lat, lon = e.latlng.lng;
-    addAddressRow(`${lat.toFixed(6)}, ${lon.toFixed(6)}`);
-    const input = addresses[addresses.length-1].input;
-    setAddressCoords(input, [lat,lon], input.value);
-  });
-}
-
-function clearAll(){
-  addresses = [];
-  elList.innerHTML = "";
-  elSummary.textContent = "";
-  refreshMarkers();
-  drawPolylines([]);
-}
-
-async function optimizeRoute(){
-  const payload = addresses.filter(a => a.coords).map(a => ({label:a.label, coords:a.coords}));
-  if(payload.length < 2){
-    alert("Adicione pelo menos 2 endereços geocodificados (🔍).");
+  const data = await res.json();
+  if (!res.ok) {
+    alert(data.error || 'Endereço não encontrado');
     return;
   }
-  const clusters = parseInt(document.getElementById('clusters').value || "1", 10);
-
-  const r = await fetch('/api/optimize', {
-    method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({addresses: payload, clusters})
-  });
-  const data = await r.json();
-  if(data.error){ alert(data.error); return; }
-
-  drawPolylines(data.routes);
-
-  // Reconstrói a lista na sequência otimizada (concatenando clusters)
-  const ordered = [];
-  data.routes.forEach(r => r.order.forEach(p => ordered.push(p)));
-
-  // Recria UI com os labels existentes, quando possível (melhor esforço)
-  const key = (p)=>`${p[0].toFixed(6)},${p[1].toFixed(6)}`;
-  const labelMap = {};
-  payload.forEach(a => { labelMap[key(a.coords)] = a.label; });
-
-  elList.innerHTML = "";
-  addresses = [];
-  ordered.forEach(p => {
-    addAddressRow(labelMap[key(p)] || "");
-    const last = addresses[addresses.length-1];
-    last.coords = p;
-    last.label  = labelMap[key(p)] || last.label || "";
-  });
-  refreshMarkers();
-  reindexListBadges();
-
-  elSummary.textContent =
-    `Distância total: ${data.total_distance_km} km — ETA total: ${data.total_eta_min} min — Clusters: ${data.clusters}`;
+  const {lat, lon, label} = data;
+  const m = L.marker([lat, lon], {icon: numberIcon(markers.length+1)}).addTo(map)
+            .bindPopup(label);
+  markers.push({marker: m, lat, lon, label});
+  renderList();
 }
+
+map.on('click', (e) => {
+  if (!clickMode) return;
+  const lat = e.latlng.lat, lon = e.latlng.lng;
+  const label = `Ponto ${markers.length+1}`;
+  const m = L.marker([lat, lon], {icon: numberIcon(markers.length+1)}).addTo(map)
+            .bindPopup(label);
+  markers.push({marker: m, lat, lon, label});
+  renderList();
+});
+
+document.getElementById('addAddressBtn').onclick = async () => {
+  const addr = prompt('Digite o endereço:');
+  if (addr) await addAddress(addr);
+};
+
+document.getElementById('clickModeBtn').onclick = () => {
+  clickMode = !clickMode;
+  document.getElementById('clickModeBtn').innerText = clickMode ? 'Clique no mapa (ON)' : 'Clique no mapa';
+};
+
+document.getElementById('clearBtn').onclick = () => {
+  markers.forEach(m => map.removeLayer(m.marker));
+  markers = [];
+  if (polyline) { map.removeLayer(polyline); polyline = null; }
+  renderList();
+  document.getElementById('summary').innerText = 'Distância: 0 km — ETA: 0 min';
+};
+
+document.getElementById('optBtn').onclick = async () => {
+  if (markers.length < 2) { alert('Adicione pelo menos dois pontos.'); return; }
+  const points = markers.map(m => ({lat: m.lat, lon: m.lon, label: m.label}));
+  const res = await fetch('/optimize', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({points})
+  });
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Falha ao otimizar'); return; }
+
+  // reordena marcadores conforme solução
+  const idx = data.ordered_points.map(p => {
+    return points.findIndex(q => q.lat === p.lat && q.lon === p.lon);
+  });
+  // ordenar nossa lista local
+  markers = idx.map(i => markers[i]);
+  refreshMarkers();
+
+  // desenhar polilinha pelas ruas
+  if (polyline) map.removeLayer(polyline);
+  const latlngs = data.route.map(p => [p[0], p[1]]);
+  polyline = L.polyline(latlngs, {weight: 5}).addTo(map);
+  map.fitBounds(polyline.getBounds(), {padding: [30,30]});
+
+  document.getElementById('summary').innerText =
+    `Distância: ${data.distance_km} km — ETA: ${data.eta_min} min`;
+};
