@@ -18,7 +18,7 @@ def optimize():
     addresses = data.get("addresses", [])
     clusters = data.get("clusters", 1)
 
-    # geocodificar
+    # geocodificar endereços
     coords = [geocode_address(addr) for addr in addresses]
 
     # otimizar rotas
