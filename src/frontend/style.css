@@ -1,23 +1,9 @@
-body{font-family:Arial,Helvetica,sans-serif;margin:0}
-h2{margin:10px}
-#topbar{display:flex;gap:8px;align-items:center;margin:10px}
-#wrap{display:flex;gap:10px}
-#left{width:380px;min-width:320px;max-width:420px;padding:10px}
-#right{flex:1}
-#map{height:80vh;width:100%}
-.pill{padding:6px 10px;border:1px solid #ddd;background:#f7f7f7;border-radius:6px;cursor:pointer}
-.pill:hover{background:#eee}
-.row{display:flex;gap:6px;margin:6px 0;align-items:center}
-.row input{flex:1;padding:6px}
-.badge{background:#2a74d6;color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
-.mini{padding:2px 8px}
-.summary{margin-top:8px;font-weight:600}
-.legend{font-size:12px;color:#666}
-
-/* marcador numerado (Leaflet) */
-.custom-div-icon{background:transparent;border:none}
-.marker-number{
-  background:#2a74d6;color:#fff;font-weight:bold;border-radius:50%;
-  width:28px;height:28px;line-height:28px;text-align:center;border:2px solid #fff;
-  box-shadow:0 0 3px rgba(0,0,0,.5)
-}
+html, body { height: 100%; margin: 0; font-family: system-ui, Arial, sans-serif; }
+#map { position: absolute; top: 70px; left: 320px; right: 0; bottom: 0; }
+.toolbar { position: absolute; top: 8px; left: 8px; right: 8px; height: 50px; display: flex; gap: 8px; align-items: center; z-index: 1000; }
+.panel { position: absolute; top: 70px; left: 8px; width: 300px; bottom: 8px; background: #fff; border: 1px solid #ddd; border-radius: 8px; padding: 10px; z-index: 1000; overflow: auto; }
+.address { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; }
+.address .idx { background:#2b7cff; color:#fff; border-radius: 10px; width:22px; height:22px; display:flex; align-items:center; justify-content:center; font-size:12px; }
+.address input { flex:1; padding:6px; border:1px solid #ccc; border-radius:6px; font-size: 12px; }
+.address button { border:1px solid #ccc; background:#f8f8f8; border-radius:6px; padding:6px 8px; cursor:pointer; }
+#summary { margin-top: 10px; font-weight: bold; }
