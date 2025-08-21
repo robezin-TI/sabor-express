@@ -1,12 +1,13 @@
 import requests
 
-NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
+USER_AGENT = "sabor-express-route-optimizer/1.0"
 
-def geocode_address(address):
-    """Converte endereço em coordenadas (lat, lon)"""
+def geocode_address(address: str):
+    """Transforma endereço em coordenadas usando Nominatim (OSM)."""
+    url = "https://nominatim.openstreetmap.org/search"
     params = {"q": address, "format": "json", "limit": 1}
-    resp = requests.get(NOMINATIM_URL, params=params, headers={"User-Agent": "route-ai-app"})
-    if resp.status_code == 200 and resp.json():
-        data = resp.json()[0]
-        return [float(data["lat"]), float(data["lon"])]
+    r = requests.get(url, params=params, headers={"User-Agent": USER_AGENT}, timeout=20)
+    if r.ok and r.json():
+        j = r.json()[0]
+        return [float(j["lat"]), float(j["lon"])]
     return None
