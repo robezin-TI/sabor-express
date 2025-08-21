@@ -1,12 +1,12 @@
 from geopy.geocoders import Nominatim
 
-geolocator = Nominatim(user_agent="sabor_express")
+_geocoder = Nominatim(user_agent="sabor_express_app")
 
 def geocode_address(address: str):
-    """Converte endereço para coordenadas (lat, lon)."""
     try:
-        location = geolocator.geocode(address)
-        if location:
-            return (location.latitude, location.longitude)
+        loc = _geocoder.geocode(address, timeout=10)
+        if not loc:
+            return None
+        return (loc.latitude, loc.longitude)
     except Exception:
         return None
