@@ -1,31 +1,33 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <title>Otimizador de Rotas</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <meta charset="UTF-8" />
+  <title>Sabor Express - Otimizador de Rotas</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <h2>Sabor Express - Otimizador de Rotas</h2>
+  <h2>Sabor Express - Otimizador de Rotas</h2>
 
-    <div class="controls">
-        <label>Clusters (motoboys):</label>
-        <input id="clusters" type="number" value="1" min="1"/>
+  <div id="topbar">
+    <label>Clusters (motoboys):</label>
+    <input id="clusters" type="number" value="1" min="1" />
+    <button class="pill" id="btnAdd">+ Adicionar endereço</button>
+    <button class="pill" id="btnMapClick">Clique no mapa</button>
+    <button class="pill" id="btnOptimize">Otimizar rota</button>
+    <button class="pill" id="btnClear">Limpar</button>
+  </div>
 
-        <button onclick="addAddressField()">+ Adicionar endereço</button>
-        <button onclick="enableMapClick()">Clique no mapa</button>
-        <button onclick="optimizeRoute()">Otimizar rota</button>
-        <button onclick="clearAll()">Limpar</button>
+  <div id="wrap">
+    <div id="left">
+      <div id="addressList"></div>
+      <div class="summary" id="summary"></div>
+      <div class="legend">Os números na lista correspondem aos marcadores no mapa.</div>
     </div>
+    <div id="right"><div id="map"></div></div>
+  </div>
 
-    <div id="addresses"></div>
-
-    <p id="summary"></p>
-
-    <div id="map"></div>
-
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-    <script src="script.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
