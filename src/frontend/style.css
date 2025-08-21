@@ -1,26 +1,23 @@
-body {
-    font-family: Arial, sans-serif;
-    margin: 0;
-    padding: 10px;
-}
-h2 {
-    margin-bottom: 10px;
-}
-.controls {
-    margin-bottom: 10px;
-}
-#map {
-    height: 600px;
-    width: 100%;
-}
-.address-input {
-    margin: 5px 0;
-    display: flex;
-    gap: 5px;
-}
-.address-input input {
-    flex: 1;
-}
-.address-input button {
-    padding: 2px 6px;
+body{font-family:Arial,Helvetica,sans-serif;margin:0}
+h2{margin:10px}
+#topbar{display:flex;gap:8px;align-items:center;margin:10px}
+#wrap{display:flex;gap:10px}
+#left{width:380px;min-width:320px;max-width:420px;padding:10px}
+#right{flex:1}
+#map{height:80vh;width:100%}
+.pill{padding:6px 10px;border:1px solid #ddd;background:#f7f7f7;border-radius:6px;cursor:pointer}
+.pill:hover{background:#eee}
+.row{display:flex;gap:6px;margin:6px 0;align-items:center}
+.row input{flex:1;padding:6px}
+.badge{background:#2a74d6;color:#fff;border-radius:50%;width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
+.mini{padding:2px 8px}
+.summary{margin-top:8px;font-weight:600}
+.legend{font-size:12px;color:#666}
+
+/* marcador numerado (Leaflet) */
+.custom-div-icon{background:transparent;border:none}
+.marker-number{
+  background:#2a74d6;color:#fff;font-weight:bold;border-radius:50%;
+  width:28px;height:28px;line-height:28px;text-align:center;border:2px solid #fff;
+  box-shadow:0 0 3px rgba(0,0,0,.5)
 }
