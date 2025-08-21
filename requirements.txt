@@ -1,8 +1,6 @@
 flask
 flask-cors
 requests
-geopy
 scikit-learn
 networkx
 osmnx
-pandas
