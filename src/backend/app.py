@@ -1,8 +1,15 @@
 import os
+import sys
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from geo import geocode_address
-from optimizer import optimize_routes
+
+# garante que possamos importar geo/optimizer sem __init__.py
+CURRENT_DIR = os.path.dirname(__file__)
+if CURRENT_DIR not in sys.path:
+    sys.path.append(CURRENT_DIR)
+
+from geo import geocode_address          # noqa: E402
+from optimizer import optimize_routes    # noqa: E402
 
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # /src
 FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
@@ -29,7 +36,7 @@ def api_geocode():
 def api_optimize():
     payload = request.get_json(force=True) or {}
     addresses = payload.get("addresses", [])
-    clusters = int(payload.get("clusters", 1))
+    clusters = int(payload.get("clusters", 1) or 1)
 
     if len(addresses) < 2:
         return jsonify({"error": "Adicione pelo menos 2 endereços."}), 400
