@@ -1,20 +1,18 @@
 FROM python:3.10-slim
 
-WORKDIR /app
-
-# libs nativas p/ osmnx
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+# instalar dependências do sistema
+RUN apt-get update && apt-get install -y \
+    gcc g++ make \
     libspatialindex-dev \
-    libproj-dev \
-    libgeos-dev \
-    libgdal-dev \
     && rm -rf /var/lib/apt/lists/*
 
+WORKDIR /app
+
+# copiar arquivos do projeto
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY src ./src
+COPY . .
 
-EXPOSE 5000
+# rodar o backend Flask
 CMD ["python", "-m", "src.backend.app"]
