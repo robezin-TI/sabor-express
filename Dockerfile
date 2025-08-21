@@ -2,6 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
+# libs nativas p/ osmnx
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libspatialindex-dev \
@@ -16,5 +17,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 
 EXPOSE 5000
-
 CMD ["python", "-m", "src.backend.app"]
