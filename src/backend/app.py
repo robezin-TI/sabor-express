@@ -1,8 +1,10 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-from optimizer import optimize
-from geo import geocode_address
+from .optimizer import optimize
+from .geo import geocode_address
+import os
 
+# apontando frontend como pasta estática
 app = Flask(__name__, static_folder="../frontend", static_url_path="/")
 CORS(app)
 
@@ -28,4 +30,5 @@ def api_optimize():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True)
