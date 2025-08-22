@@ -1,100 +1,117 @@
-let map = L.map('map').setView([-23.55, -46.63], 12);
+let map = L.map('map').setView([-23.55, -46.63], 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '© OpenStreetMap'
+    maxZoom: 19,
 }).addTo(map);
 
+let points = [];
 let markers = [];
 let polyline = null;
-let clickMode = false;
 
-function numberIcon(n) {
-  return L.divIcon({
-    className: 'num-icon',
-    html: `<div style="background:#2b7cff;color:white;border-radius:14px;
-      width:26px;height:26px;display:flex;align-items:center;justify-content:center;
-      font-weight:bold;border:2px solid white;box-shadow:0 0 3px rgba(0,0,0,.3)">${n}</div>`
-  });
+const list = document.getElementById("points-list");
+
+function updateList() {
+    list.innerHTML = "";
+    points.forEach((p, i) => {
+        const item = document.createElement("li");
+        item.textContent = p.label;
+
+        // Botão remover
+        const btnRemove = document.createElement("button");
+        btnRemove.textContent = "❌";
+        btnRemove.onclick = () => removePoint(i);
+
+        // Botão subir
+        const btnUp = document.createElement("button");
+        btnUp.textContent = "⬆";
+        btnUp.onclick = () => movePoint(i, -1);
+
+        // Botão descer
+        const btnDown = document.createElement("button");
+        btnDown.textContent = "⬇";
+        btnDown.onclick = () => movePoint(i, 1);
+
+        item.append(" ", btnRemove, btnUp, btnDown);
+        list.appendChild(item);
+    });
 }
 
-function refreshList() {
-  const list = document.getElementById('addressList');
-  list.innerHTML = "";
-  markers.forEach((m, i)=>{
-    const li = document.createElement("li");
-    li.innerText = `${i+1}. ${m.label}`;
-    list.appendChild(li);
-  });
+function addPoint(lat, lon, label) {
+    const marker = L.marker([lat, lon]).addTo(map);
+    markers.push(marker);
+    points.push({ lat, lon, label });
+    updateList();
 }
 
-function showMetrics(distKm, etaMin) {
-  document.getElementById('metrics').innerText =
-    distKm ? `Distância: ${distKm} km — ETA: ${etaMin} min` : '';
+function removePoint(index) {
+    map.removeLayer(markers[index]);
+    markers.splice(index, 1);
+    points.splice(index, 1);
+    updateList();
+    if (polyline) {
+        map.removeLayer(polyline);
+        polyline = null;
+    }
 }
 
-async function addAddress(addr) {
-  const res = await fetch('/geocode', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({address:addr})
-  });
-  const d = await res.json();
-  if (!res.ok) { alert("Erro: " + (d.error || 'Falha ao geocodificar')); return; }
-  const m = L.marker([d.lat,d.lon],{icon:numberIcon(markers.length+1)}).addTo(map);
-  markers.push({lat:d.lat, lon:d.lon, label:d.label, marker:m});
-  refreshList();
+function movePoint(index, direction) {
+    const newIndex = index + direction;
+    if (newIndex < 0 || newIndex >= points.length) return;
+
+    // Reordena pontos e marcadores
+    const [point] = points.splice(index, 1);
+    const [marker] = markers.splice(index, 1);
+    points.splice(newIndex, 0, point);
+    markers.splice(newIndex, 0, marker);
+
+    updateList();
 }
 
-document.getElementById('addAddressBtn').onclick = async ()=>{
-  const input = document.getElementById('addressInput');
-  const addr = input.value.trim();
-  if (addr) {
-    await addAddress(addr);
-    input.value = "";
-  }
+document.getElementById("add-btn").onclick = async () => {
+    const address = document.getElementById("address").value;
+    if (!address) return;
+    const res = await fetch("/geocode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address })
+    });
+    const data = await res.json();
+    if (data.lat) {
+        addPoint(data.lat, data.lon, data.label);
+        map.setView([data.lat, data.lon], 14);
+    }
 };
 
-document.getElementById('clickModeBtn').onclick = ()=>{
-  clickMode = true;
-  alert("Clique no mapa para adicionar um ponto.");
+document.getElementById("map-btn").onclick = () => {
+    map.once("click", (e) => {
+        addPoint(e.latlng.lat, e.latlng.lng, `Ponto ${points.length + 1}`);
+    });
 };
 
-map.on('click', e=>{
-  if (!clickMode) return;
-  clickMode = false;
-  const m = L.marker([e.latlng.lat,e.latlng.lng],{icon:numberIcon(markers.length+1)}).addTo(map);
-  markers.push({lat:e.latlng.lat, lon:e.latlng.lng, label:`Ponto (${markers.length+1})`, marker:m});
-  refreshList();
-});
-
-document.getElementById('optBtn').onclick = async ()=>{
-  if (markers.length < 2) { alert("Adicione pelo menos 2 endereços."); return; }
-
-  const points = markers.map(m=>({lat:m.lat, lon:m.lon, label:m.label}));
-  const res = await fetch('/optimize',{
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({points})
-  });
-  const d = await res.json();
-
-  // redesenha marcadores conforme a nova ordem
-  markers.forEach(m=>map.removeLayer(m.marker));
-  markers=[];
-  d.ordered_points.forEach((p,i)=>{
-    const m = L.marker([p.lat,p.lon],{icon:numberIcon(i+1)}).addTo(map);
-    markers.push({lat:p.lat, lon:p.lon, label:p.label, marker:m});
-  });
-  refreshList();
-  showMetrics(d.distance_km, d.eta_min);
-
-  // traçado
-  if (polyline) map.removeLayer(polyline);
-  polyline = L.polyline(d.route, {color:'red', weight:4}).addTo(map);
-  if (d.route && d.route.length > 1) {
-    map.fitBounds(polyline.getBounds(), {padding:[20,20]});
-  }
+document.getElementById("clear-btn").onclick = () => {
+    points = [];
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    if (polyline) map.removeLayer(polyline);
+    polyline = null;
+    updateList();
 };
 
-document.getElementById('clearBtn').onclick = ()=>{
-  markers.forEach(m=>map.removeLayer(m.marker));
-  markers=[]; refreshList(); showMetrics(null,null);
-  if(polyline){map.removeLayer(polyline); polyline=null;}
+document.getElementById("optimize-btn").onclick = async () => {
+    if (points.length < 2) return;
+
+    const res = await fetch("/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ points })
+    });
+    const data = await res.json();
+
+    if (polyline) map.removeLayer(polyline);
+
+    polyline = L.polyline(data.route, { color: "blue" }).addTo(map);
+    map.fitBounds(polyline.getBounds());
+
+    // Atualiza pontos na ordem otimizada
+    points = data.ordered_points;
+    updateList();
 };
