@@ -1,6 +1,6 @@
 from geopy.geocoders import Nominatim
 
-_geocoder = Nominatim(user_agent="sabor_express")
+_geocoder = Nominatim(user_agent="sabor_express_maps")
 
 def geocode_address(address: str):
     try:
