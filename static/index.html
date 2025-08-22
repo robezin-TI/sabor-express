@@ -2,16 +2,22 @@
 <html lang="pt-br">
 <head>
   <meta charset="UTF-8" />
-  <title>Sabor Express</title>
+  <title>Sabor Express - Otimizador de Rotas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
-  <h3>Sabor Express - Otimizador de Rotas</h3>
-  <button id="addAddressBtn">+ Endereço</button>
-  <button id="clickModeBtn">Clique no mapa</button>
-  <button id="optBtn">Otimizar</button>
-  <button id="clearBtn">Limpar</button>
+  <div id="sidebar">
+    <h2>Sabor Express</h2>
+    <div id="inputs">
+      <input type="text" id="addressInput" placeholder="Digite um endereço"/>
+      <button id="addAddressBtn">Adicionar</button>
+      <button id="clickModeBtn">Clique no mapa</button>
+      <button id="optBtn">Otimizar rota</button>
+      <button id="clearBtn">Limpar</button>
+    </div>
+    <ul id="addressList"></ul>
+  </div>
 
   <div id="map"></div>
 
