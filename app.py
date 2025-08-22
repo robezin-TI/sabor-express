@@ -8,7 +8,7 @@ CORS(app)
 
 @app.route("/")
 def root():
-    return send_from_directory("static", "index.html")
+    return send_from_directory(app.static_folder, "index.html")
 
 @app.route("/geocode", methods=["POST"])
 def geocode():
@@ -33,11 +33,10 @@ def optimize():
     ordered_points = [points[i] for i in ordered_idx]
     return jsonify({
         "ordered_points": ordered_points,
-        "route": route_coords,          # lista de [lat, lon] seguindo as ruas
+        "route": route_coords,
         "distance_km": dist_km,
         "eta_min": eta_min
     })
 
 if __name__ == "__main__":
-    # debug=True ajuda durante o desenvolvimento
     app.run(host="0.0.0.0", port=5000, debug=True)
