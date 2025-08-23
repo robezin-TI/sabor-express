@@ -1,12 +1,9 @@
-from geopy.geocoders import Nominatim
+import osmnx as ox
 
-_geocoder = Nominatim(user_agent="sabor_express_maps")
 
 def geocode_address(address: str):
     try:
-        loc = _geocoder.geocode(address, timeout=10)
-        if not loc:
-            return None
-        return (loc.latitude, loc.longitude)
+        location = ox.geocode(address)
+        return location[0], location[1], address
     except Exception:
-        return None
+        return None, None, "Não encontrado"
