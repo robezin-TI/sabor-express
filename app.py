@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
-from geo import geocode_address
-from optimizer import optimize_routes
+from api.geocode import geocode_address
+from api.optimizer import optimize_routes
 
 app = Flask(__name__, static_folder="static", template_folder="static")
 
@@ -12,8 +12,8 @@ def index():
 
 @app.route("/geocode", methods=["POST"])
 def geocode():
-    payload = request.get_json(force=True)
-    address = (payload or {}).get("address", "").strip()
+    data = request.get_json(force=True) or {}
+    address = (data.get("address") or "").strip()
     if not address:
         return jsonify({"error": "Endereço vazio"}), 400
 
@@ -26,14 +26,14 @@ def geocode():
 
 @app.route("/optimize", methods=["POST"])
 def optimize():
-    payload = request.get_json(force=True)
-    points = (payload or {}).get("points", [])
+    data = request.get_json(force=True) or {}
+    points = data.get("points") or []
     if not isinstance(points, list) or len(points) < 2:
         return jsonify({"error": "São necessários ao menos 2 pontos"}), 400
 
-    route_coords, ordered_points = optimize_routes(points)
-    return jsonify({"route": route_coords, "ordered_points": ordered_points})
+    result = optimize_routes(points)
+    return jsonify(result)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=False)
