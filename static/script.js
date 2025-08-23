@@ -15,17 +15,14 @@ function updateList() {
         const item = document.createElement("li");
         item.textContent = p.label;
 
-        // Botão remover
         const btnRemove = document.createElement("button");
         btnRemove.textContent = "❌";
         btnRemove.onclick = () => removePoint(i);
 
-        // Botão subir
         const btnUp = document.createElement("button");
         btnUp.textContent = "⬆";
         btnUp.onclick = () => movePoint(i, -1);
 
-        // Botão descer
         const btnDown = document.createElement("button");
         btnDown.textContent = "⬇";
         btnDown.onclick = () => movePoint(i, 1);
@@ -57,7 +54,6 @@ function movePoint(index, direction) {
     const newIndex = index + direction;
     if (newIndex < 0 || newIndex >= points.length) return;
 
-    // Reordena pontos e marcadores
     const [point] = points.splice(index, 1);
     const [marker] = markers.splice(index, 1);
     points.splice(newIndex, 0, point);
@@ -111,7 +107,6 @@ document.getElementById("optimize-btn").onclick = async () => {
     polyline = L.polyline(data.route, { color: "blue" }).addTo(map);
     map.fitBounds(polyline.getBounds());
 
-    // Atualiza pontos na ordem otimizada
     points = data.ordered_points;
     updateList();
 };
