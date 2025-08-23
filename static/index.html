@@ -1,23 +1,41 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <title>Sabor Express</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="UTF-8" />
+  <title>Sabor Express - Otimizador de Rotas</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="sidebar">
-    <h2>Sabor Express</h2>
-    <input type="text" id="address" placeholder="Digite um endereço" />
-    <button id="add-btn">Adicionar</button>
-    <button id="map-btn">Clique no mapa</button>
-    <button id="optimize-btn">Otimizar rota</button>
-    <button id="clear-btn">Limpar</button>
-    <ul id="points-list"></ul>
+  <div id="app">
+    <aside id="sidebar">
+      <h1>Sabor Express</h1>
+
+      <div class="group">
+        <label for="address">Pesquisar endereço</label>
+        <input type="text" id="address" placeholder="Ex.: Av. Paulista, 1000, SP" />
+        <button id="add-btn">Adicionar</button>
+        <button id="map-btn">Clique no mapa</button>
+      </div>
+
+      <div class="group">
+        <h2>Paradas</h2>
+        <ul id="points-list"></ul>
+        <div class="row">
+          <button id="optimize-btn" class="primary">Otimizar rota</button>
+          <button id="clear-btn" class="danger">Limpar</button>
+        </div>
+      </div>
+
+      <div class="group tiny">
+        <div id="metrics"></div>
+      </div>
+    </aside>
+
+    <main id="map"></main>
   </div>
-  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
