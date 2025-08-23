@@ -1,1 +1,55 @@
+:root {
+  --panel: #f9f9f9;
+  --border: #ddd;
+  --primary: #007bff;
+  --danger: #dc3545;
+}
 
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: sans-serif;
+}
+
+#app {
+  display: flex;
+  height: 100%;
+  width: 100%;
+}
+
+#sidebar {
+  width: 320px;
+  background: var(--panel);
+  padding: 16px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+}
+
+#map {
+  flex: 1;
+  height: 100%;
+  width: 100%;
+}
+
+ul {
+  list-style: none;
+  padding: 0;
+}
+
+li {
+  padding: 4px 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+button {
+  margin: 4px 0;
+  padding: 6px 12px;
+  border: none;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+button.primary { background: var(--primary); color: white; }
+button.danger { background: var(--danger); color: white; }
