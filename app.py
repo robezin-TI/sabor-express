@@ -1,42 +1,30 @@
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
-from optimizer import optimize_routes
+from flask import Flask, request, jsonify, render_template
 from geo import geocode_address
+from optimizer import optimize_routes
 
-app = Flask(__name__, static_folder="static", static_url_path="")
-CORS(app)
+app = Flask(__name__, static_folder="static", template_folder="static")
+
 
 @app.route("/")
-def root():
-    return send_from_directory(app.static_folder, "index.html")
+def index():
+    return app.send_static_file("index.html")
+
 
 @app.route("/geocode", methods=["POST"])
 def geocode():
-    data = request.get_json(force=True)
-    address = data.get("address", "")
-    latlon = geocode_address(address)
-    if not latlon:
-        return jsonify({"error": "Endereço não encontrado"}), 404
-    lat, lon = latlon
-    return jsonify({"lat": lat, "lon": lon, "label": address})
+    data = request.get_json()
+    address = data.get("address")
+    lat, lon, label = geocode_address(address)
+    return jsonify({"lat": lat, "lon": lon, "label": label})
+
 
 @app.route("/optimize", methods=["POST"])
 def optimize():
-    data = request.get_json(force=True)
+    data = request.get_json()
     points = data.get("points", [])
-    if len(points) < 2:
-        return jsonify({"ordered_points": points, "route": [], "distance_km": 0, "eta_min": 0})
+    route, ordered_points = optimize_routes(points)
+    return jsonify({"route": route, "ordered_points": ordered_points})
 
-    coords = [(p["lat"], p["lon"]) for p in points]
-    route_coords, ordered_idx, dist_km, eta_min = optimize_routes(coords)
-
-    ordered_points = [points[i] for i in ordered_idx]
-    return jsonify({
-        "ordered_points": ordered_points,
-        "route": route_coords,
-        "distance_km": dist_km,
-        "eta_min": eta_min
-    })
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
