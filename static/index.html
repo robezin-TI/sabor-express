@@ -1,27 +1,321 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!doctype html>
+<html lang="pt-br">
 <head>
-  <meta charset="UTF-8" />
-  <title>Sabor Express</title>
-  <link rel="stylesheet" href="style.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <meta charset="utf-8" />
+  <title>Sabor Express – Otimizador de Rotas (OSRM)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <!-- Leaflet Routing Machine -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"
+  />
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <!-- SortableJS (drag & drop da lista lateral) -->
+  <script src="https://unpkg.com/sortablejs@1.15.2/modular/sortable.esm.js" type="module"></script>
+  <script nomodule src="https://unpkg.com/sortablejs@1.15.2/Sortable.min.js"></script>
+
+  <style>
+    :root{
+      --bg:#f7f7f8; --panel:#fff; --border:#e5e7eb; --text:#0f172a; --muted:#475569;
+      --brand:#0ea5e9; --brand-2:#2563eb; --danger:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif; color:var(--text); background:var(--bg);}
+    .app{display:grid; grid-template-columns:360px 1fr; height:100vh;}
+    .sidebar{background:var(--panel); padding:16px; border-right:1px solid var(--border); overflow:auto}
+    h1{font-size:20px; margin:0 0 12px}
+    .input-row{display:flex; gap:8px; margin-bottom:8px}
+    .input-row input{flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:8px}
+    .btn{padding:10px 12px; border:none; border-radius:10px; cursor:pointer; font-weight:600}
+    .btn.primary{background:linear-gradient(180deg,var(--brand),var(--brand-2)); color:#fff}
+    .btn.gray{background:#e2e8f0; color:#0f172a}
+    .btn.danger{background:var(--danger); color:#fff}
+    .muted{color:var(--muted); font-size:12px}
+    .list{margin-top:12px; display:flex; flex-direction:column; gap:8px}
+    .stop{display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:10px; background:#fff}
+    .handle{cursor:grab; padding:6px 8px; border:1px dashed var(--border); border-radius:8px; color:var(--muted); font-size:12px}
+    .stop input{border:none; outline:none; width:100%; font-size:14px}
+    .stop .x{border:none; background:#fee2e2; color:#b91c1c; border-radius:8px; width:32px; height:32px; cursor:pointer}
+    .actions{display:grid; grid-template-columns:1fr; gap:8px; margin-top:12px}
+    .actions .row{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+    #map{width:100%; height:100%;}
+
+    /* badge A,B,C nos itens da lista */
+    .badge{width:28px;height:28px;border-radius:50%;display:inline-grid;place-items:center;font-weight:700;color:#fff;background:#111827}
+    .footer{margin-top:8px}
+    .hint{margin-top:6px; font-size:12px; color:var(--muted)}
+  </style>
 </head>
 <body>
-  <div id="app">
-    <aside id="sidebar">
+  <div class="app">
+    <aside class="sidebar">
       <h1>Sabor Express</h1>
-      <input type="text" id="address" placeholder="Digite um endereço" />
-      <button id="add-btn">Adicionar</button>
-      <button id="map-btn">Selecionar no mapa</button>
-      <ul id="points-list"></ul>
-      <button id="optimize-btn" class="primary">Otimizar rota</button>
-      <button id="clear-btn" class="danger">Limpar</button>
-      <div id="metrics"></div>
+
+      <div class="input-row">
+        <input id="search" placeholder="Digite um endereço (ou clique no mapa)" />
+        <button id="add" class="btn gray">Adicionar</button>
+      </div>
+      <div class="hint">Dica: você pode clicar no mapa para adicionar um ponto.</div>
+
+      <div id="list" class="list"></div>
+
+      <div class="actions">
+        <div class="row">
+          <button id="optimize" class="btn primary">Otimizar rota (OSRM)</button>
+          <button id="route" class="btn gray">Traçar rota</button>
+        </div>
+        <button id="clear" class="btn danger">Limpar tudo</button>
+      </div>
+
+      <div class="footer muted">
+        <p>Arraste os itens para reordenar (A, B, C… atualizam automaticamente).</p>
+        <p>Geocodificação: Nominatim (OSM). Roteamento: OSRM.</p>
+      </div>
     </aside>
+
     <div id="map"></div>
   </div>
 
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="script.js"></script>
+<script>
+(() => {
+  // ---------- MAPA ----------
+  const map = L.map('map', { zoomControl:true }).setView([-23.57, -46.63], 12); // SP como default
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  // ---------- ESTADO ----------
+  let stops = []; // { id, name, lat, lng, marker }
+  const listEl = document.getElementById('list');
+
+  // ---------- MARCADORES A, B, C ----------
+  function letterIcon(letter) {
+    return L.divIcon({
+      className: 'letter-marker',
+      html: `<div style="
+        width:34px;height:34px;border-radius:50%;
+        background:#111827;color:#fff;display:grid;place-items:center;
+        font-weight:800;border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25)">${letter}</div>`,
+      iconSize: [34,34],
+      iconAnchor: [17,34],
+      popupAnchor: [0,-30]
+    });
+  }
+  function updateMarkerLetters(){
+    stops.forEach((s,i) => {
+      const letter = String.fromCharCode(65+i); // 65 = 'A'
+      s.marker.setIcon(letterIcon(letter));
+      s.marker.bindPopup(`<b>${letter}</b> ${s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`}`);
+    });
+  }
+
+  // ---------- LISTA LATERAL ----------
+  function renderList(){
+    listEl.innerHTML = '';
+    stops.forEach((s,i) => {
+      const item = document.createElement('div');
+      item.className = 'stop';
+      item.dataset.id = s.id;
+
+      const handle = document.createElement('div');
+      handle.className = 'handle';
+      handle.textContent = '⋮⋮';
+
+      const badge = document.createElement('div');
+      badge.className = 'badge';
+      badge.textContent = String.fromCharCode(65+i);
+
+      const input = document.createElement('input');
+      input.value = s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
+      input.placeholder = 'Endereço ou nome';
+      input.addEventListener('change', () => { s.name = input.value; updateMarkerLetters(); });
+
+      const left = document.createElement('div');
+      left.style.display = 'flex';
+      left.style.alignItems = 'center';
+      left.style.gap = '8px';
+      left.appendChild(handle);
+      left.appendChild(badge);
+
+      const del = document.createElement('button');
+      del.className = 'x';
+      del.textContent = '×';
+      del.title = 'Remover';
+      del.onclick = () => removeStop(s.id);
+
+      item.appendChild(left);
+      item.appendChild(input);
+      item.appendChild(del);
+      listEl.appendChild(item);
+    });
+
+    // ativa drag&drop (SortableJS)
+    // compatibilidade módulo/nomodule
+    const initSortable = () => new Sortable(listEl, {
+      handle: '.handle',
+      animation: 150,
+      onEnd: (evt) => {
+        const from = evt.oldIndex, to = evt.newIndex;
+        if (from === to) return;
+        const moved = stops.splice(from,1)[0];
+        stops.splice(to,0,moved);
+        updateMarkerLetters();
+        route(); // redesenha traçado após reordenar
+      }
+    });
+    // se Sortable tiver export ES Module, já foi carregado no <script type="module">,
+    // caso contrário usamos o global.
+    try { initSortable(); } catch(e){ window.Sortable && initSortable(); }
+  }
+
+  function removeStop(id){
+    const idx = stops.findIndex(s => s.id === id);
+    if (idx >= 0) {
+      map.removeLayer(stops[idx].marker);
+      stops.splice(idx,1);
+      renderList();
+      updateMarkerLetters();
+      routeControl && route(); // atualiza rota
+    }
+  }
+
+  // ---------- ADICIONAR PONTO ----------
+  function addStop(lat,lng,name=''){
+    const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'_'+Math.random());
+    const marker = L.marker([lat,lng], { draggable:true, icon:letterIcon('?') }).addTo(map);
+    const s = { id, name, lat, lng, marker };
+    stops.push(s);
+
+    marker.on('dragend', (e) => {
+      const { lat, lng } = e.target.getLatLng();
+      s.lat = lat; s.lng = lng;
+      updateMarkerLetters();
+      route(); // re-calcula
+    });
+
+    renderList();
+    updateMarkerLetters();
+    fitToStops();
+  }
+
+  // clique no mapa para adicionar
+  map.on('click', (e) => addStop(e.latlng.lat, e.latlng.lng));
+
+  // busca (Nominatim)
+  async function geocode(q){
+    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}`;
+    const r = await fetch(url, { headers: { 'Accept-Language':'pt-BR' }});
+    if(!r.ok) throw new Error('Falha na geocodificação');
+    const data = await r.json();
+    return data.map(d => ({ lat: +d.lat, lng: +d.lon, display: d.display_name }));
+  }
+
+  // campos UI
+  const input = document.getElementById('search');
+  document.getElementById('add').onclick = async () => {
+    const q = input.value.trim();
+    if(!q) return;
+    try{
+      const [first] = await geocode(q);
+      if(!first) { alert('Endereço não encontrado'); return; }
+      addStop(first.lat, first.lng, q);
+      input.value = '';
+    }catch(err){ console.error(err); alert('Erro ao buscar endereço.'); }
+  };
+
+  // ---------- ROUTING ----------
+  // LRM com OSRM v1
+  let routeControl = L.Routing.control({
+    waypoints: [],
+    router: L.Routing.osrmv1({
+      serviceUrl: 'https://router.project-osrm.org/route/v1'
+    }),
+    showAlternatives: true,
+    addWaypoints: false, // desliga inserir arrastando a linha
+    routeWhileDragging: false,
+    draggableWaypoints: true,
+    fitSelectedRoutes: false,
+    show: false // ocultamos o painel padrão do LRM (vamos usar nossa lista)
+  }).addTo(map);
+
+  function lrmSetWaypoints(){
+    const wps = stops.map(s => L.latLng(s.lat, s.lng));
+    routeControl.setWaypoints(wps);
+  }
+
+  function fitToStops(){
+    if(!stops.length) return;
+    const group = L.featureGroup(stops.map(s => s.marker));
+    map.fitBounds(group.getBounds().pad(0.25));
+  }
+
+  function route(){
+    if(stops.length < 2){
+      routeControl.setWaypoints([]);
+      return;
+    }
+    lrmSetWaypoints();
+    routeControl.route();
+  }
+  document.getElementById('route').onclick = route;
+
+  // ---------- OTIMIZAÇÃO (OSRM Trip API) ----------
+  // Mantemos o primeiro como origem e o último como destino (roundtrip=false)
+  async function optimize(){
+    if(stops.length < 3){ route(); return; }
+
+    // monta "lon,lat;lon,lat;..."
+    const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
+    const url = `https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&destination=last&roundtrip=false&geometries=geojson`;
+    const r = await fetch(url);
+    if(!r.ok){ alert('Falha ao otimizar a rota'); return; }
+    const data = await r.json();
+    if(data.code !== 'Ok'){ alert('OSRM não retornou solução.'); return; }
+
+    // a API devolve "waypoints" com "waypoint_index" (ordem sugerida)
+    // preservando origem (index 0) e destino (último)
+    const order = data.waypoints
+      .slice() // copia
+      .sort((a,b) => a.waypoint_index - b.waypoint_index)
+      .map(w => w.waypoint_index);
+
+    // aplica a nova ordem ao array stops
+    const sorted = order.map(i => stops[i]);
+    stops = sorted;
+
+    renderList();
+    updateMarkerLetters();
+    route();
+  }
+  document.getElementById('optimize').onclick = optimize;
+
+  // ---------- LIMPAR ----------
+  document.getElementById('clear').onclick = () => {
+    stops.forEach(s => map.removeLayer(s.marker));
+    stops = [];
+    renderList();
+    routeControl.setWaypoints([]);
+  };
+
+  // ---------- BOOT ----------
+  renderList();
+})();
+</script>
 </body>
 </html>
