@@ -1,36 +1,5 @@
-# Byte-compiled / cache
 __pycache__/
-*.py[cod]
-*$py.class
-
-# Virtual env
+*.pyc
 .env
-.venv/
-venv/
-ENV/
-
-# IDEs
 .vscode/
-.idea/
-
-# System
-.DS_Store
-Thumbs.db
-
-# Python packaging
-dist/
-build/
-*.egg-info/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Docker
-docker-compose.override.yml
-.envrc
-
-# Logs
-*.log
-
-# OSMNX cache (se usar)
-.osmnx_cache/
+*.db
