@@ -1,99 +1,82 @@
-let map = L.map("map").setView([-23.5505, -46.6333], 12); // SP como default
+let map = L.map("map").setView([-23.5505, -46.6333], 12); // São Paulo default
+
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  maxZoom: 19,
-  attribution: "© OpenStreetMap contributors"
+  attribution: "&copy; OpenStreetMap contributors"
 }).addTo(map);
 
-let points = [];
 let markers = [];
-let routeLine = null;
+let points = [];
 
-// adicionar ponto por endereço
+function renderList() {
+  const ul = document.getElementById("points-list");
+  ul.innerHTML = "";
+  points.forEach((p, idx) => {
+    let li = document.createElement("li");
+    li.textContent = `${idx + 1}. ${p.label}`;
+    let btn = document.createElement("button");
+    btn.textContent = "X";
+    btn.onclick = () => {
+      map.removeLayer(markers[idx]);
+      markers.splice(idx, 1);
+      points.splice(idx, 1);
+      renderList();
+    };
+    li.appendChild(btn);
+    ul.appendChild(li);
+  });
+}
+
 document.getElementById("add-btn").onclick = async () => {
   const addr = document.getElementById("address").value;
   if (!addr) return;
-  const resp = await fetch("/geocode", {
+
+  let res = await fetch("/geocode", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ address: addr })
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({address: addr})
   });
-  const data = await resp.json();
-  if (data.error) { alert(data.error); return; }
-  addPoint(data.lat, data.lon, data.label);
+
+  let data = await res.json();
+  if (data.lat && data.lon) {
+    let marker = L.marker([data.lat, data.lon]).addTo(map);
+    markers.push(marker);
+    points.push({lat: data.lat, lon: data.lon, label: addr});
+    renderList();
+  }
 };
 
-// adicionar ponto clicando no mapa
 document.getElementById("map-btn").onclick = () => {
-  map.once("click", e => {
-    addPoint(e.latlng.lat, e.latlng.lng, `(${e.latlng.lat.toFixed(4)}, ${e.latlng.lng.toFixed(4)})`);
+  map.once("click", (e) => {
+    let marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+    markers.push(marker);
+    points.push({lat: e.latlng.lat, lon: e.latlng.lng, label: "Mapa"});
+    renderList();
   });
 };
-
-function addPoint(lat, lon, label) {
-  const idx = points.length;
-  points.push({ lat, lon, label });
-
-  const marker = L.marker([lat, lon]).addTo(map).bindPopup(label);
-  markers.push(marker);
-
-  renderList();
-}
-
-function renderList() {
-  const list = document.getElementById("points-list");
-  list.innerHTML = "";
-  points.forEach((p, i) => {
-    const li = document.createElement("li");
-    li.innerHTML = `<span>${String.fromCharCode(65 + i)} - ${p.label}</span>`;
-    const delBtn = document.createElement("button");
-    delBtn.innerText = "X";
-    delBtn.className = "danger";
-    delBtn.onclick = () => removePoint(i);
-    li.appendChild(delBtn);
-    list.appendChild(li);
-  });
-}
-
-function removePoint(i) {
-  points.splice(i, 1);
-  map.removeLayer(markers[i]);
-  markers.splice(i, 1);
-  renderList();
-  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-}
 
 document.getElementById("clear-btn").onclick = () => {
-  points = [];
   markers.forEach(m => map.removeLayer(m));
   markers = [];
-  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  points = [];
   renderList();
-  document.getElementById("metrics").innerText = "";
+  document.getElementById("metrics").innerHTML = "";
 };
 
 document.getElementById("optimize-btn").onclick = async () => {
-  if (points.length < 2) { alert("Adicione pelo menos 2 pontos"); return; }
-  const resp = await fetch("/optimize", {
+  if (points.length < 2) return alert("Adicione pelo menos 2 pontos");
+
+  let res = await fetch("/optimize", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ points })
-  });
-  const data = await resp.json();
-  if (data.error) { alert(data.error); return; }
-
-  // redesenha lista e rota
-  points = data.ordered_points;
-  markers.forEach(m => map.removeLayer(m));
-  markers = [];
-  points.forEach(p => {
-    const marker = L.marker([p.lat, p.lon]).addTo(map).bindPopup(p.label);
-    markers.push(marker);
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({points})
   });
 
-  if (routeLine) { map.removeLayer(routeLine); }
-  routeLine = L.polyline(data.route, { color: "blue" }).addTo(map);
-  map.fitBounds(routeLine.getBounds());
+  let data = await res.json();
+  if (data.error) {
+    alert(data.error);
+    return;
+  }
 
-  document.getElementById("metrics").innerText =
-    `Distância: ${data.distance_km} km | ETA: ${data.eta_min} min`;
+  document.getElementById("metrics").innerHTML =
+    `Distância: ${data.distance_km} km<br>Tempo: ${data.time_min} min`;
 };
