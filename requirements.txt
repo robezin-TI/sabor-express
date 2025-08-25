@@ -1,6 +1,4 @@
-Flask==2.3.2
-osmnx==1.9.3
-networkx==3.2.1
-geopandas==0.14.3
-shapely==2.0.3
-requests==2.31.0
+flask
+requests
+osmnx
+networkx
