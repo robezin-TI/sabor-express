@@ -2,40 +2,25 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <title>Sabor Express - Otimizador de Rotas</title>
-  <link rel="stylesheet" href="css/style.css" />
+  <title>Sabor Express</title>
+  <link rel="stylesheet" href="style.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 </head>
 <body>
   <div id="app">
     <aside id="sidebar">
       <h1>Sabor Express</h1>
-
-      <div class="group">
-        <label for="address">Pesquisar endereço</label>
-        <input type="text" id="address" placeholder="Ex.: Av. Paulista, 1000, SP"/>
-        <button id="add-btn">Adicionar</button>
-        <button id="map-btn">Clique no mapa</button>
-      </div>
-
-      <div class="group">
-        <h2>Paradas</h2>
-        <ul id="points-list"></ul>
-        <div class="row">
-          <button id="optimize-btn" class="primary">Otimizar rota</button>
-          <button id="clear-btn" class="danger">Limpar</button>
-        </div>
-      </div>
-
-      <div class="group tiny">
-        <div id="metrics"></div>
-      </div>
+      <input type="text" id="address" placeholder="Digite um endereço" />
+      <button id="add-btn">Adicionar</button>
+      <button id="map-btn">Selecionar no mapa</button>
+      <ul id="points-list"></ul>
+      <button id="optimize-btn" class="primary">Otimizar rota</button>
+      <button id="clear-btn" class="danger">Limpar</button>
+      <div id="metrics"></div>
     </aside>
-
     <div id="map"></div>
   </div>
-
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="js/script.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
