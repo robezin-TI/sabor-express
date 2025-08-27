@@ -1,10 +1,14 @@
-FROM python:3.10-slim
+# Usa a imagem oficial do Nginx
+FROM nginx:alpine
 
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Apaga a configuração padrão
+RUN rm -rf /usr/share/nginx/html/*
 
-COPY . .
+# Copia o conteúdo da pasta static/ para o Nginx
+COPY static/ /usr/share/nginx/html/
 
-EXPOSE 5000
-CMD ["python", "app.py"]
+# Expõe a porta 80
+EXPOSE 80
+
+# Inicializa o Nginx
+CMD ["nginx", "-g", "daemon off;"]
