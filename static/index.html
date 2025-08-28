@@ -1,321 +1,194 @@
 <!doctype html>
 <html lang="pt-br">
 <head>
-  <meta charset="utf-8" />
-  <title>Sabor Express – Otimizador de Rotas (OSRM)</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-
+  <meta charset="utf-8">
+  <title>Sabor Express – Otimizador de Rotas</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <!-- Leaflet -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-  <script
-    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-    crossorigin=""
-  ></script>
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <!-- Leaflet Routing Machine -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css"
-  />
-  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
-
-  <!-- SortableJS (drag & drop da lista lateral) -->
-  <script src="https://unpkg.com/sortablejs@1.15.2/modular/sortable.esm.js" type="module"></script>
-  <script nomodule src="https://unpkg.com/sortablejs@1.15.2/Sortable.min.js"></script>
-
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.css"/>
+  <script src="https://unpkg.com/leaflet-routing-machine/dist/leaflet-routing-machine.js"></script>
+  <!-- SortableJS -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+  <!-- ML-KMeans -->
+  <script src="https://cdn.jsdelivr.net/npm/ml-kmeans@4.1.0/dist/ml-kmeans.min.js"></script>
   <style>
-    :root{
-      --bg:#f7f7f8; --panel:#fff; --border:#e5e7eb; --text:#0f172a; --muted:#475569;
-      --brand:#0ea5e9; --brand-2:#2563eb; --danger:#ef4444;
+    body, html { margin:0; padding:0; height:100%; font-family:sans-serif; }
+    #map { height:100%; width:75%; float:right; }
+    #sidebar {
+      width:25%; height:100%; float:left; overflow:auto;
+      border-right:1px solid #ccc; padding:10px; box-sizing:border-box;
     }
-    *{box-sizing:border-box}
-    body{margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Arial,sans-serif; color:var(--text); background:var(--bg);}
-    .app{display:grid; grid-template-columns:360px 1fr; height:100vh;}
-    .sidebar{background:var(--panel); padding:16px; border-right:1px solid var(--border); overflow:auto}
-    h1{font-size:20px; margin:0 0 12px}
-    .input-row{display:flex; gap:8px; margin-bottom:8px}
-    .input-row input{flex:1; padding:10px 12px; border:1px solid var(--border); border-radius:8px}
-    .btn{padding:10px 12px; border:none; border-radius:10px; cursor:pointer; font-weight:600}
-    .btn.primary{background:linear-gradient(180deg,var(--brand),var(--brand-2)); color:#fff}
-    .btn.gray{background:#e2e8f0; color:#0f172a}
-    .btn.danger{background:var(--danger); color:#fff}
-    .muted{color:var(--muted); font-size:12px}
-    .list{margin-top:12px; display:flex; flex-direction:column; gap:8px}
-    .stop{display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center; padding:10px; border:1px solid var(--border); border-radius:10px; background:#fff}
-    .handle{cursor:grab; padding:6px 8px; border:1px dashed var(--border); border-radius:8px; color:var(--muted); font-size:12px}
-    .stop input{border:none; outline:none; width:100%; font-size:14px}
-    .stop .x{border:none; background:#fee2e2; color:#b91c1c; border-radius:8px; width:32px; height:32px; cursor:pointer}
-    .actions{display:grid; grid-template-columns:1fr; gap:8px; margin-top:12px}
-    .actions .row{display:grid; grid-template-columns:1fr 1fr; gap:8px}
-    #map{width:100%; height:100%;}
-
-    /* badge A,B,C nos itens da lista */
-    .badge{width:28px;height:28px;border-radius:50%;display:inline-grid;place-items:center;font-weight:700;color:#fff;background:#111827}
-    .footer{margin-top:8px}
-    .hint{margin-top:6px; font-size:12px; color:var(--muted)}
+    h2 { font-size:1.2em; margin-top:0; }
+    ul { list-style:none; padding:0; }
+    li { padding:5px; margin:5px 0; background:#f4f4f4;
+         display:flex; justify-content:space-between; align-items:center; }
+    .btn { display:block; margin:5px 0; padding:8px; border:none;
+           background:#2563eb; color:#fff; border-radius:4px; cursor:pointer; }
+    .btn:hover { background:#1e40af; }
+    .handle { cursor:grab; margin-right:10px; }
   </style>
 </head>
 <body>
-  <div class="app">
-    <aside class="sidebar">
-      <h1>Sabor Express</h1>
-
-      <div class="input-row">
-        <input id="search" placeholder="Digite um endereço (ou clique no mapa)" />
-        <button id="add" class="btn gray">Adicionar</button>
-      </div>
-      <div class="hint">Dica: você pode clicar no mapa para adicionar um ponto.</div>
-
-      <div id="list" class="list"></div>
-
-      <div class="actions">
-        <div class="row">
-          <button id="optimize" class="btn primary">Otimizar rota (OSRM)</button>
-          <button id="route" class="btn gray">Traçar rota</button>
-        </div>
-        <button id="clear" class="btn danger">Limpar tudo</button>
-      </div>
-
-      <div class="footer muted">
-        <p>Arraste os itens para reordenar (A, B, C… atualizam automaticamente).</p>
-        <p>Geocodificação: Nominatim (OSM). Roteamento: OSRM.</p>
-      </div>
-    </aside>
-
-    <div id="map"></div>
+  <div id="sidebar">
+    <h2>Paradas</h2>
+    <ul id="stopList"></ul>
+    <div class="actions">
+      <button class="btn" onclick="optimizeRoute()">Otimizar rota</button>
+      <button class="btn" onclick="clearAll()">Limpar tudo</button>
+    </div>
   </div>
+  <div id="map"></div>
 
 <script>
-(() => {
-  // ---------- MAPA ----------
-  const map = L.map('map', { zoomControl:true }).setView([-23.57, -46.63], 12); // SP como default
+  const map = L.map('map').setView([-23.55, -46.63], 12);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; OpenStreetMap'
+    attribution:'© OpenStreetMap'
   }).addTo(map);
 
-  // ---------- ESTADO ----------
-  let stops = []; // { id, name, lat, lng, marker }
-  const listEl = document.getElementById('list');
+  let stops = [];
+  let routeControl = null;
+  const stopList = document.getElementById("stopList");
 
-  // ---------- MARCADORES A, B, C ----------
-  function letterIcon(letter) {
-    return L.divIcon({
-      className: 'letter-marker',
-      html: `<div style="
-        width:34px;height:34px;border-radius:50%;
-        background:#111827;color:#fff;display:grid;place-items:center;
-        font-weight:800;border:2px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,.25)">${letter}</div>`,
-      iconSize: [34,34],
-      iconAnchor: [17,34],
-      popupAnchor: [0,-30]
-    });
-  }
-  function updateMarkerLetters(){
-    stops.forEach((s,i) => {
-      const letter = String.fromCharCode(65+i); // 65 = 'A'
-      s.marker.setIcon(letterIcon(letter));
-      s.marker.bindPopup(`<b>${letter}</b> ${s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`}`);
-    });
+  // Cria letra A, B, C...
+  function letter(index) {
+    return String.fromCharCode(65 + index);
   }
 
-  // ---------- LISTA LATERAL ----------
+  // Atualiza lista lateral
   function renderList(){
-    listEl.innerHTML = '';
-    stops.forEach((s,i) => {
-      const item = document.createElement('div');
-      item.className = 'stop';
-      item.dataset.id = s.id;
-
-      const handle = document.createElement('div');
-      handle.className = 'handle';
-      handle.textContent = '⋮⋮';
-
-      const badge = document.createElement('div');
-      badge.className = 'badge';
-      badge.textContent = String.fromCharCode(65+i);
-
-      const input = document.createElement('input');
-      input.value = s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
-      input.placeholder = 'Endereço ou nome';
-      input.addEventListener('change', () => { s.name = input.value; updateMarkerLetters(); });
-
-      const left = document.createElement('div');
-      left.style.display = 'flex';
-      left.style.alignItems = 'center';
-      left.style.gap = '8px';
-      left.appendChild(handle);
-      left.appendChild(badge);
-
-      const del = document.createElement('button');
-      del.className = 'x';
-      del.textContent = '×';
-      del.title = 'Remover';
-      del.onclick = () => removeStop(s.id);
-
-      item.appendChild(left);
-      item.appendChild(input);
-      item.appendChild(del);
-      listEl.appendChild(item);
+    stopList.innerHTML = "";
+    stops.forEach((s,i)=>{
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="handle">☰</span>${letter(i)} - ${s.lat.toFixed(4)}, ${s.lng.toFixed(4)}`;
+      stopList.appendChild(li);
     });
 
-    // ativa drag&drop (SortableJS)
-    // compatibilidade módulo/nomodule
-    const initSortable = () => new Sortable(listEl, {
-      handle: '.handle',
+    // Ativa drag&drop
+    new Sortable(stopList, {
+      handle: ".handle",
       animation: 150,
-      onEnd: (evt) => {
+      onEnd: evt=>{
         const from = evt.oldIndex, to = evt.newIndex;
-        if (from === to) return;
+        if(from===to) return;
         const moved = stops.splice(from,1)[0];
         stops.splice(to,0,moved);
-        updateMarkerLetters();
-        route(); // redesenha traçado após reordenar
+        updateMarkers();
+        drawRoute();
       }
     });
-    // se Sortable tiver export ES Module, já foi carregado no <script type="module">,
-    // caso contrário usamos o global.
-    try { initSortable(); } catch(e){ window.Sortable && initSortable(); }
   }
 
-  function removeStop(id){
-    const idx = stops.findIndex(s => s.id === id);
-    if (idx >= 0) {
-      map.removeLayer(stops[idx].marker);
-      stops.splice(idx,1);
-      renderList();
-      updateMarkerLetters();
-      routeControl && route(); // atualiza rota
-    }
+  // Adiciona parada
+  function addStop(latlng){
+    const marker = L.marker(latlng).addTo(map);
+    stops.push({lat:latlng.lat, lng:latlng.lng, marker});
+    updateMarkers();
+    renderList();
+    drawRoute();
   }
 
-  // ---------- ADICIONAR PONTO ----------
-  function addStop(lat,lng,name=''){
-    const id = crypto.randomUUID ? crypto.randomUUID() : (Date.now()+'_'+Math.random());
-    const marker = L.marker([lat,lng], { draggable:true, icon:letterIcon('?') }).addTo(map);
-    const s = { id, name, lat, lng, marker };
-    stops.push(s);
+  // Atualiza letras nos marcadores
+  function updateMarkers(){
+    stops.forEach((s,i)=>{
+      s.marker.setIcon(L.divIcon({
+        className:'', html:`<b>${letter(i)}</b>`,
+        iconSize:[20,20], iconAnchor:[10,10]
+      }));
+    });
+  }
 
-    marker.on('dragend', (e) => {
-      const { lat, lng } = e.target.getLatLng();
-      s.lat = lat; s.lng = lng;
-      updateMarkerLetters();
-      route(); // re-calcula
+  // Desenha rota
+  function drawRoute(){
+    if(routeControl) map.removeControl(routeControl);
+    if(stops.length < 2) return;
+    const waypoints = stops.map(s=>L.latLng(s.lat,s.lng));
+    routeControl = L.Routing.control({
+      waypoints,
+      router: L.Routing.osrmv1({serviceUrl:"https://router.project-osrm.org/route/v1"}),
+      createMarker: ()=>null, addWaypoints:false, draggableWaypoints:false
+    }).addTo(map);
+  }
+
+  // Otimizar via OSRM Trip API
+  async function optimizeRoute(){
+    if(stops.length<3) return alert("Adicione pelo menos 3 pontos.");
+    const coords = stops.map(s=>`${s.lng},${s.lat}`).join(";");
+    const url = `https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&roundtrip=false&annotations=duration,distance`;
+    const res = await fetch(url);
+    const data = await res.json();
+    if(!data.trips || !data.trips[0]) return alert("Erro na otimização");
+    const order = data.waypoints.map(w=>w.waypoint_index);
+    stops = order.map(i=>stops[i]);
+    updateMarkers(); renderList(); drawRoute();
+  }
+
+  // Limpar tudo
+  function clearAll(){
+    stops.forEach(s=>map.removeLayer(s.marker));
+    stops=[]; renderList();
+    if(routeControl) map.removeControl(routeControl);
+  }
+
+  // Clique no mapa adiciona ponto
+  map.on("click", e=>addStop(e.latlng));
+
+  // === K-MEANS CLUSTERING ===
+  async function clusterize(k=2){
+    if(stops.length < k) { alert("Poucos pontos para clusterizar"); return; }
+
+    const data = stops.map(s => [s.lat, s.lng]);
+    const { clusters } = mlKMeans(data, k);
+
+    // Remove marcadores antigos
+    stops.forEach(s => map.removeLayer(s.marker));
+
+    const colors = ["#2563eb","#10b981","#f59e0b","#ef4444","#8b5cf6","#14b8a6","#d946ef"];
+
+    // Redesenha com cor de cluster
+    clusters.forEach((c,i)=>{
+      const s=stops[i]; const color=colors[c%colors.length];
+      const marker=L.marker([s.lat,s.lng],{
+        icon:L.divIcon({
+          className:"", html:`<b style="color:${color}">${letter(i)}</b>`,
+          iconSize:[20,20], iconAnchor:[10,10]
+        })
+      }).addTo(map);
+      s.marker=marker; s.cluster=c;
     });
 
-    renderList();
-    updateMarkerLetters();
-    fitToStops();
+    // Agrupa por cluster e desenha rotas
+    const grouped={};
+    clusters.forEach((c,i)=>{
+      if(!grouped[c]) grouped[c]=[];
+      grouped[c].push(stops[i]);
+    });
+
+    Object.values(grouped).forEach(group=>{
+      if(group.length>1){
+        const waypoints=group.map(s=>L.latLng(s.lat,s.lng));
+        L.Routing.control({
+          waypoints,
+          router:L.Routing.osrmv1({serviceUrl:"https://router.project-osrm.org/route/v1"}),
+          addWaypoints:false, draggableWaypoints:false,
+          fitSelectedRoutes:false, createMarker:()=>null,
+          lineOptions:{styles:[{color:colors[group[0].cluster%colors.length],opacity:0.7,weight:5}]}
+        }).addTo(map);
+      }
+    });
   }
 
-  // clique no mapa para adicionar
-  map.on('click', (e) => addStop(e.latlng.lat, e.latlng.lng));
-
-  // busca (Nominatim)
-  async function geocode(q){
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}`;
-    const r = await fetch(url, { headers: { 'Accept-Language':'pt-BR' }});
-    if(!r.ok) throw new Error('Falha na geocodificação');
-    const data = await r.json();
-    return data.map(d => ({ lat: +d.lat, lng: +d.lon, display: d.display_name }));
-  }
-
-  // campos UI
-  const input = document.getElementById('search');
-  document.getElementById('add').onclick = async () => {
-    const q = input.value.trim();
-    if(!q) return;
-    try{
-      const [first] = await geocode(q);
-      if(!first) { alert('Endereço não encontrado'); return; }
-      addStop(first.lat, first.lng, q);
-      input.value = '';
-    }catch(err){ console.error(err); alert('Erro ao buscar endereço.'); }
+  // Botão K-Means
+  const btnCluster=document.createElement("button");
+  btnCluster.textContent="Agrupar entregas (K-Means)";
+  btnCluster.className="btn";
+  btnCluster.onclick=()=>{
+    const k=prompt("Quantos clusters deseja formar?","2");
+    if(k) clusterize(parseInt(k));
   };
-
-  // ---------- ROUTING ----------
-  // LRM com OSRM v1
-  let routeControl = L.Routing.control({
-    waypoints: [],
-    router: L.Routing.osrmv1({
-      serviceUrl: 'https://router.project-osrm.org/route/v1'
-    }),
-    showAlternatives: true,
-    addWaypoints: false, // desliga inserir arrastando a linha
-    routeWhileDragging: false,
-    draggableWaypoints: true,
-    fitSelectedRoutes: false,
-    show: false // ocultamos o painel padrão do LRM (vamos usar nossa lista)
-  }).addTo(map);
-
-  function lrmSetWaypoints(){
-    const wps = stops.map(s => L.latLng(s.lat, s.lng));
-    routeControl.setWaypoints(wps);
-  }
-
-  function fitToStops(){
-    if(!stops.length) return;
-    const group = L.featureGroup(stops.map(s => s.marker));
-    map.fitBounds(group.getBounds().pad(0.25));
-  }
-
-  function route(){
-    if(stops.length < 2){
-      routeControl.setWaypoints([]);
-      return;
-    }
-    lrmSetWaypoints();
-    routeControl.route();
-  }
-  document.getElementById('route').onclick = route;
-
-  // ---------- OTIMIZAÇÃO (OSRM Trip API) ----------
-  // Mantemos o primeiro como origem e o último como destino (roundtrip=false)
-  async function optimize(){
-    if(stops.length < 3){ route(); return; }
-
-    // monta "lon,lat;lon,lat;..."
-    const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-    const url = `https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&destination=last&roundtrip=false&geometries=geojson`;
-    const r = await fetch(url);
-    if(!r.ok){ alert('Falha ao otimizar a rota'); return; }
-    const data = await r.json();
-    if(data.code !== 'Ok'){ alert('OSRM não retornou solução.'); return; }
-
-    // a API devolve "waypoints" com "waypoint_index" (ordem sugerida)
-    // preservando origem (index 0) e destino (último)
-    const order = data.waypoints
-      .slice() // copia
-      .sort((a,b) => a.waypoint_index - b.waypoint_index)
-      .map(w => w.waypoint_index);
-
-    // aplica a nova ordem ao array stops
-    const sorted = order.map(i => stops[i]);
-    stops = sorted;
-
-    renderList();
-    updateMarkerLetters();
-    route();
-  }
-  document.getElementById('optimize').onclick = optimize;
-
-  // ---------- LIMPAR ----------
-  document.getElementById('clear').onclick = () => {
-    stops.forEach(s => map.removeLayer(s.marker));
-    stops = [];
-    renderList();
-    routeControl.setWaypoints([]);
-  };
-
-  // ---------- BOOT ----------
-  renderList();
-})();
+  document.querySelector(".actions").appendChild(btnCluster);
 </script>
 </body>
 </html>
