@@ -1,63 +1,46 @@
 from flask import Flask, request, jsonify, send_from_directory
 from api.geocode import get_coordinates
-from api.optimizer import shortest_path
-from api.clustering import cluster_deliveries
-from api.ml_model import train_model, predict_sales
+from api.optimizer import optimize_route_osrm, route_osrm
+from api.clustering import cluster_points
+from api.ml_model import DeliveryTimePredictor
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__, static_folder="static", static_url_path="")
 
+predictor = DeliveryTimePredictor()
 
-@app.route('/')
+@app.route("/")
 def index():
     return send_from_directory("static", "index.html")
 
-@app.route('/<path:path>')
-def static_files(path):
-    return send_from_directory("static", path)
-
-
-# -------------------- API ROUTES --------------------
-
-@app.route('/api/geocode', methods=['POST'])
-def api_geocode():
+@app.route("/geocode", methods=["POST"])
+def geocode():
     data = request.json
-    address = data.get("address")
-    coords = get_coordinates(address)
-    return jsonify(coords)
+    lat, lon = get_coordinates(data["address"])
+    return jsonify({"lat": lat, "lon": lon})
 
-
-@app.route('/api/route', methods=['POST'])
-def api_route():
+@app.route("/optimize", methods=["POST"])
+def optimize():
     data = request.json
-    start = tuple(data["start"])
-    end = tuple(data["end"])
-    graph = data["graph"]
-    path = shortest_path(graph, start, end)
-    return jsonify({"path": path})
+    result = optimize_route_osrm(data["coords"])
+    return jsonify(result)
 
-
-@app.route('/api/cluster', methods=['POST'])
-def api_cluster():
+@app.route("/route", methods=["POST"])
+def route():
     data = request.json
-    points = data["points"]
-    k = data.get("k", 2)
-    clusters = cluster_deliveries(points, k)
-    return jsonify(clusters)
+    result = route_osrm(data["coords"])
+    return jsonify(result)
 
-
-@app.route('/api/train', methods=['POST'])
-def api_train():
+@app.route("/cluster", methods=["POST"])
+def cluster():
     data = request.json
-    model_info = train_model(data["features"], data["targets"])
-    return jsonify(model_info)
+    labels, centers = cluster_points(data["coords"], n_clusters=data.get("k", 2))
+    return jsonify({"labels": labels.tolist(), "centers": centers.tolist()})
 
-
-@app.route('/api/predict', methods=['POST'])
-def api_predict():
+@app.route("/predict", methods=["POST"])
+def predict():
     data = request.json
-    prediction = predict_sales(data["features"])
-    return jsonify({"prediction": prediction})
-
+    time = predictor.predict(data["distance"])
+    return jsonify({"predicted_time": time})
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000, debug=True)
+    app.run(host="0.0.0.0", port=5000, debug=True)
