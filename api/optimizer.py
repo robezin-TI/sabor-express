@@ -1,33 +1,32 @@
 import heapq
-from math import radians, sin, cos, sqrt, atan2
 
-def haversine(coord1, coord2):
-    R = 6371.0
-    lat1, lon1 = radians(coord1[0]), radians(coord1[1])
-    lat2, lon2 = radians(coord2[0]), radians(coord2[1])
-    dlon = lon2 - lon1
-    dlat = lat2 - lat1
-    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
-    return R * 2 * atan2(sqrt(a), sqrt(1-a))
+def heuristic(a, b):
+    return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
-def a_star(points):
-    """
-    points: lista de pontos [{'lat':, 'lng':}]
-    Retorna caminho otimizado simples (ordenação por proximidade)
-    """
-    if not points:
-        return []
+def shortest_path(graph, start, end):
+    queue = [(0, start)]
+    visited = set()
+    came_from = {}
 
-    start = points[0]
-    unvisited = points[1:]
-    path = [start]
+    while queue:
+        cost, node = heapq.heappop(queue)
 
-    while unvisited:
-        nearest = min(unvisited, key=lambda p: haversine(
-            (path[-1]["lat"], path[-1]["lng"]),
-            (p["lat"], p["lng"])
-        ))
-        path.append(nearest)
-        unvisited.remove(nearest)
+        if node in visited:
+            continue
+        visited.add(node)
 
-    return path
+        if node == end:
+            path = []
+            while node in came_from:
+                path.append(node)
+                node = came_from[node]
+            path.append(start)
+            return path[::-1]
+
+        for neighbor, weight in graph.get(str(node), []):
+            if neighbor not in visited:
+                priority = cost + weight + heuristic(neighbor, end)
+                heapq.heappush(queue, (priority, tuple(neighbor)))
+                came_from[tuple(neighbor)] = node
+
+    return []
