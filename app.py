@@ -1,34 +1,39 @@
 from flask import Flask, request, jsonify, send_from_directory
-from api.geocode import geocode_address
-from api.optimizer import optimize_routes
-import os
+from api.geocode import get_coordinates
+from api.clustering import cluster_points
+from api.optimizer import a_star
+from api.ml_model import predict
 
-app = Flask(__name__, static_folder="static", static_url_path="")
+app = Flask(__name__, static_folder="static")
 
 @app.route("/")
-def index():
+def serve_index():
     return send_from_directory("static", "index.html")
 
-@app.route("/geocode", methods=["POST"])
+@app.route("/api/geocode", methods=["POST"])
 def geocode():
     data = request.json
-    address = data.get("address")
-    coords = geocode_address(address)
+    coords = get_coordinates(data["address"])
     return jsonify(coords)
 
-@app.route("/optimize", methods=["POST"])
+@app.route("/api/cluster", methods=["POST"])
+def cluster():
+    data = request.json
+    clustered, centers = cluster_points(data["points"], n_clusters=data.get("n_clusters", 3))
+    return jsonify({"points": clustered, "centers": centers})
+
+@app.route("/api/optimize", methods=["POST"])
 def optimize():
     data = request.json
-    points = data.get("points", [])
-    if len(points) < 2:
-        return jsonify({"error": "Mínimo de 2 pontos necessários"}), 400
-    route, dist, time = optimize_routes(points)
-    return jsonify({
-        "route": route,
-        "distance_km": dist,
-        "time_min": time
-    })
+    path = a_star(data["points"])
+    return jsonify({"path": path})
+
+@app.route("/api/predict", methods=["POST"])
+def ml_predict():
+    data = request.json
+    value = data.get("value", 1)
+    result = predict(value)
+    return jsonify({"prediction": result})
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    app.run(host="0.0.0.0", port=8000)
