@@ -1,36 +1,58 @@
 body {
+  margin: 0;
+  display: flex;
+  height: 100vh;
   font-family: Arial, sans-serif;
-  background: #fafafa;
-  text-align: center;
-  padding: 20px;
 }
 
-#app {
-  background: white;
-  border-radius: 12px;
-  padding: 20px;
-  display: inline-block;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+#sidebar {
+  width: 350px;
+  background: #fff;
+  padding: 15px;
+  box-shadow: 2px 0 6px rgba(0,0,0,0.2);
+  overflow-y: auto;
 }
 
-.controls button {
-  margin: 5px;
-  padding: 10px 15px;
+#sidebar h2 {
+  margin-top: 0;
+}
+
+#address {
+  width: 70%;
+  padding: 5px;
+}
+
+#address-list {
+  list-style: none;
+  padding: 0;
+}
+
+#address-list li {
+  margin: 5px 0;
+}
+
+button {
+  margin: 5px 0;
+  padding: 8px;
+  width: 100%;
   border: none;
-  border-radius: 8px;
-  background: #4CAF50;
-  color: white;
+  border-radius: 4px;
   cursor: pointer;
 }
 
-.controls button:hover {
-  background: #45a049;
+button.clear {
+  background: red;
+  color: #fff;
 }
 
-#output {
-  text-align: left;
-  margin-top: 20px;
-  background: #f4f4f4;
-  padding: 15px;
-  border-radius: 8px;
+#map {
+  flex: 1;
+}
+
+#directions {
+  margin-top: 10px;
+  font-size: 14px;
+  background: #f9f9f9;
+  padding: 8px;
+  border-radius: 4px;
 }
