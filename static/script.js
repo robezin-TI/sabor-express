@@ -1,47 +1,88 @@
-async function testGeocode() {
-  const res = await fetch("/api/geocode", {
+let map = L.map("map").setView([-23.55, -46.63], 10);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  attribution: "© OpenStreetMap"
+}).addTo(map);
+
+let markers = [];
+let coords = [];
+
+function addAddress() {
+  const address = document.getElementById("address").value;
+  fetch("/geocode", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({address: "Av. Paulista"})
+    body: JSON.stringify({address})
+  })
+  .then(res => res.json())
+  .then(data => {
+    if (data.lat && data.lon) {
+      coords.push([data.lat, data.lon]);
+      let marker = L.marker([data.lat, data.lon]).addTo(map);
+      markers.push(marker);
+      updateList();
+    }
   });
-  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
 }
 
-async function testRoute() {
-  const graph = {
-    "(0,0)": [[[0,1], 1], [[1,0], 1]],
-    "(0,1)": [[[1,1], 1]],
-    "(1,0)": [[[1,1], 1]],
-    "(1,1)": []
-  };
-  const res = await fetch("/api/route", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({start: [0,0], end: [1,1], graph})
+function updateList() {
+  const list = document.getElementById("address-list");
+  list.innerHTML = "";
+  coords.forEach((c, i) => {
+    let li = document.createElement("li");
+    li.textContent = `(${c[0].toFixed(5)}, ${c[1].toFixed(5)})`;
+    list.appendChild(li);
   });
-  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
 }
 
-async function testCluster() {
-  const res = await fetch("/api/cluster", {
+function drawRoute() {
+  fetch("/route", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({points: [[1,2],[2,3],[10,10],[12,11]], k: 2})
+    body: JSON.stringify({coords})
+  })
+  .then(res => res.json())
+  .then(data => {
+    showRoute(data);
   });
-  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
 }
 
-async function testML() {
-  await fetch("/api/train", {
+function optimizeRoute() {
+  fetch("/optimize", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({features: [[1],[2],[3]], targets: [2,4,6]})
+    body: JSON.stringify({coords})
+  })
+  .then(res => res.json())
+  .then(data => {
+    showRoute(data);
   });
+}
 
-  const res = await fetch("/api/predict", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({features: [4]})
+let routeLayer;
+function showRoute(data) {
+  if (routeLayer) map.removeLayer(routeLayer);
+
+  if (!data.routes && !data.trips) return;
+
+  let route = data.routes ? data.routes[0] : data.trips[0];
+  routeLayer = L.geoJSON(route.geometry).addTo(map);
+
+  // Mostra instruções
+  const steps = route.legs.flatMap(leg => leg.steps);
+  const dirBox = document.getElementById("directions");
+  dirBox.innerHTML = "";
+  steps.forEach((s, i) => {
+    const div = document.createElement("div");
+    div.textContent = `${i+1}. ${s.maneuver.instruction || "Seguir"}`;
+    dirBox.appendChild(div);
   });
-  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
+}
+
+function clearAll() {
+  coords = [];
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  if (routeLayer) map.removeLayer(routeLayer);
+  document.getElementById("address-list").innerHTML = "";
+  document.getElementById("directions").innerHTML = "";
 }
