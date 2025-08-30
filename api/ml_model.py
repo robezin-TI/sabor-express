@@ -1,23 +1,19 @@
-import numpy as np
 from sklearn.linear_model import LinearRegression
-import joblib
-import os
+import numpy as np
 
-MODEL_PATH = "model.pkl"
+model = None
 
-def train_model():
-    # Dados fake de treino
-    X = np.array([[1], [2], [3], [4], [5]])
-    y = np.array([100, 180, 260, 320, 400])
-
+def train_model(features, targets):
+    global model
+    X = np.array(features)
+    y = np.array(targets)
     model = LinearRegression()
     model.fit(X, y)
-    joblib.dump(model, MODEL_PATH)
-    return model
+    return {"coef": model.coef_.tolist(), "intercept": model.intercept_.tolist()}
 
-def predict(value):
-    if not os.path.exists(MODEL_PATH):
-        model = train_model()
-    else:
-        model = joblib.load(MODEL_PATH)
-    return model.predict(np.array([[value]])).tolist()
+def predict_sales(features):
+    global model
+    if model is None:
+        return "Modelo não treinado!"
+    X = np.array([features])
+    return model.predict(X).tolist()[0]
