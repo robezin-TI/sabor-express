@@ -6,10 +6,19 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>Sabor Express</h1>
-  <div id="map"></div>
-  <button onclick="simulate()">Simular Rotas</button>
-  <pre id="output"></pre>
+  <div id="app">
+    <h1>Sabor Express - Otimização de Rotas</h1>
+
+    <div class="controls">
+      <button onclick="testGeocode()">📍 Geocodificar</button>
+      <button onclick="testRoute()">🛣️ A*</button>
+      <button onclick="testCluster()">📊 KMeans</button>
+      <button onclick="testML()">🤖 Machine Learning</button>
+    </div>
+
+    <pre id="output"></pre>
+  </div>
+
   <script src="script.js"></script>
 </body>
 </html>
