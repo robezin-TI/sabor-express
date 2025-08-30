@@ -1,4 +1,3 @@
 flask
-requests
-osmnx
-networkx
+scikit-learn
+joblib
