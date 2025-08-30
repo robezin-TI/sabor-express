@@ -4,21 +4,25 @@
   <meta charset="UTF-8">
   <title>Sabor Express</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 </head>
 <body>
-  <div id="app">
-    <h1>Sabor Express - Otimização de Rotas</h1>
-
-    <div class="controls">
-      <button onclick="testGeocode()">📍 Geocodificar</button>
-      <button onclick="testRoute()">🛣️ A*</button>
-      <button onclick="testCluster()">📊 KMeans</button>
-      <button onclick="testML()">🤖 Machine Learning</button>
-    </div>
-
-    <pre id="output"></pre>
+  <div id="sidebar">
+    <h2>Sabor Express</h2>
+    <input type="text" id="address" placeholder="Digite um endereço">
+    <button onclick="addAddress()">Adicionar</button>
+    <ul id="address-list"></ul>
+    <button onclick="optimizeRoute()">Otimizar rota (OSRM)</button>
+    <button onclick="drawRoute()">Traçar rota</button>
+    <button class="clear" onclick="clearAll()">Limpar tudo</button>
+    
+    <h3>Instruções</h3>
+    <div id="directions"></div>
   </div>
 
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script src="script.js"></script>
 </body>
 </html>
