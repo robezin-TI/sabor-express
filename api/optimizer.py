@@ -1,27 +1,33 @@
-import networkx as nx
-import osmnx as ox
+import heapq
+from math import radians, sin, cos, sqrt, atan2
 
-ox.settings.log_console = False
-ox.settings.use_cache = True
+def haversine(coord1, coord2):
+    R = 6371.0
+    lat1, lon1 = radians(coord1[0]), radians(coord1[1])
+    lat2, lon2 = radians(coord2[0]), radians(coord2[1])
+    dlon = lon2 - lon1
+    dlat = lat2 - lat1
+    a = sin(dlat/2)**2 + cos(lat1)*cos(lat2)*sin(dlon/2)**2
+    return R * 2 * atan2(sqrt(a), sqrt(1-a))
 
-def optimize_routes(points):
-    """Calcula a melhor rota usando A*"""
-    center = (points[0]["lat"], points[0]["lon"])
-    G = ox.graph_from_point(center, dist=5000, network_type="drive")
+def a_star(points):
+    """
+    points: lista de pontos [{'lat':, 'lng':}]
+    Retorna caminho otimizado simples (ordenação por proximidade)
+    """
+    if not points:
+        return []
 
-    route = []
-    total_dist = 0
-    total_time = 0
+    start = points[0]
+    unvisited = points[1:]
+    path = [start]
 
-    for i in range(len(points) - 1):
-        orig = ox.distance.nearest_nodes(G, points[i]["lon"], points[i]["lat"])
-        dest = ox.distance.nearest_nodes(G, points[i+1]["lon"], points[i+1]["lat"])
-        path = nx.astar_path(G, orig, dest, weight="length")
-        dist = sum(ox.utils_graph.get_route_edge_attributes(G, path, "length"))
-        time = dist / (40 * 1000 / 60)  # 40km/h
+    while unvisited:
+        nearest = min(unvisited, key=lambda p: haversine(
+            (path[-1]["lat"], path[-1]["lng"]),
+            (p["lat"], p["lng"])
+        ))
+        path.append(nearest)
+        unvisited.remove(nearest)
 
-        route.extend(path)
-        total_dist += dist
-        total_time += time
-
-    return route, round(total_dist/1000, 2), round(total_time, 2)
+    return path
