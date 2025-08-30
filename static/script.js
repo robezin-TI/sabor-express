@@ -1,32 +1,47 @@
-async function simulate() {
-  const addresses = ["Rua A", "Rua B", "Rua C", "Rua D"];
-  const coords = [];
-
-  for (let addr of addresses) {
-    let res = await fetch("/api/geocode", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({address: addr})
-    });
-    coords.push(await res.json());
-  }
-
-  let clusterRes = await fetch("/api/cluster", {
+async function testGeocode() {
+  const res = await fetch("/api/geocode", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({points: coords, n_clusters: 2})
+    body: JSON.stringify({address: "Av. Paulista"})
   });
-  let clustered = await clusterRes.json();
+  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
+}
 
-  let optRes = await fetch("/api/optimize", {
+async function testRoute() {
+  const graph = {
+    "(0,0)": [[[0,1], 1], [[1,0], 1]],
+    "(0,1)": [[[1,1], 1]],
+    "(1,0)": [[[1,1], 1]],
+    "(1,1)": []
+  };
+  const res = await fetch("/api/route", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({points: clustered.points})
+    body: JSON.stringify({start: [0,0], end: [1,1], graph})
   });
-  let path = await optRes.json();
+  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
+}
 
-  document.getElementById("output").innerText = JSON.stringify({
-    clustered,
-    path
-  }, null, 2);
+async function testCluster() {
+  const res = await fetch("/api/cluster", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({points: [[1,2],[2,3],[10,10],[12,11]], k: 2})
+  });
+  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
+}
+
+async function testML() {
+  await fetch("/api/train", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({features: [[1],[2],[3]], targets: [2,4,6]})
+  });
+
+  const res = await fetch("/api/predict", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({features: [4]})
+  });
+  document.getElementById("output").textContent = JSON.stringify(await res.json(), null, 2);
 }
