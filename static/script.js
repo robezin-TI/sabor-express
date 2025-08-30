@@ -1,80 +1,32 @@
-let map = L.map("map").setView([-23.55, -46.63], 12);
+async function simulate() {
+  const addresses = ["Rua A", "Rua B", "Rua C", "Rua D"];
+  const coords = [];
 
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-  attribution: "© OpenStreetMap"
-}).addTo(map);
-
-let markers = [];
-let points = [];
-let routeLayer = null;
-
-function renderList() {
-  const ul = document.getElementById("points-list");
-  ul.innerHTML = "";
-  points.forEach((p, i) => {
-    let li = document.createElement("li");
-    li.textContent = `${String.fromCharCode(65+i)} - ${p.label}`;
-    let btn = document.createElement("button");
-    btn.textContent = "X";
-    btn.onclick = () => {
-      map.removeLayer(markers[i]);
-      markers.splice(i, 1);
-      points.splice(i, 1);
-      renderList();
-    };
-    li.appendChild(btn);
-    ul.appendChild(li);
-  });
-}
-
-document.getElementById("add-btn").onclick = async () => {
-  const addr = document.getElementById("address").value;
-  if (!addr) return;
-  let res = await fetch("/geocode", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({address: addr})
-  });
-  let data = await res.json();
-  if (data.lat && data.lon) {
-    let marker = L.marker([data.lat, data.lon]).addTo(map);
-    markers.push(marker);
-    points.push({lat: data.lat, lon: data.lon, label: addr});
-    renderList();
+  for (let addr of addresses) {
+    let res = await fetch("/api/geocode", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({address: addr})
+    });
+    coords.push(await res.json());
   }
-};
 
-document.getElementById("map-btn").onclick = () => {
-  map.once("click", e => {
-    let marker = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
-    markers.push(marker);
-    points.push({lat: e.latlng.lat, lon: e.latlng.lng, label: "Mapa"});
-    renderList();
+  let clusterRes = await fetch("/api/cluster", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({points: coords, n_clusters: 2})
   });
-};
+  let clustered = await clusterRes.json();
 
-document.getElementById("clear-btn").onclick = () => {
-  markers.forEach(m => map.removeLayer(m));
-  if (routeLayer) map.removeLayer(routeLayer);
-  markers = [];
-  points = [];
-  document.getElementById("metrics").innerHTML = "";
-  renderList();
-};
-
-document.getElementById("optimize-btn").onclick = async () => {
-  if (points.length < 2) return alert("Adicione pelo menos 2 pontos");
-
-  let res = await fetch("/optimize", {
-    method: "POST", headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({points})
+  let optRes = await fetch("/api/optimize", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({points: clustered.points})
   });
+  let path = await optRes.json();
 
-  let data = await res.json();
-  if (data.error) return alert(data.error);
-
-  if (routeLayer) map.removeLayer(routeLayer);
-  routeLayer = L.polyline([], {color:"blue"}).addTo(map);
-
-  document.getElementById("metrics").innerHTML =
-    `Distância: ${data.distance_km} km<br>Tempo: ${data.time_min} min`;
-};
+  document.getElementById("output").innerText = JSON.stringify({
+    clustered,
+    path
+  }, null, 2);
+}
