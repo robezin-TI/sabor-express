@@ -1,23 +1,50 @@
-import requests
+import math
+import networkx as nx
+import osmnx as ox
 
-def optimize_route_osrm(coords):
-    """Chama OSRM para otimizar rota (TSP simplificado)."""
-    base_url = "http://router.project-osrm.org/trip/v1/driving/"
-    coord_str = ";".join([f"{lon},{lat}" for lat, lon in coords])
-    url = f"{base_url}{coord_str}?roundtrip=true&source=first&steps=true&geometries=geojson"
-    
-    r = requests.get(url)
-    if r.status_code == 200:
-        return r.json()
-    return None
+ox.settings.log_console = False
+ox.settings.use_cache = True
 
-def route_osrm(coords):
-    """Traça rota simples entre os pontos (sem otimizar)."""
-    base_url = "http://router.project-osrm.org/route/v1/driving/"
-    coord_str = ";".join([f"{lon},{lat}" for lat, lon in coords])
-    url = f"{base_url}{coord_str}?steps=true&geometries=geojson"
-    
-    r = requests.get(url)
-    if r.status_code == 200:
-        return r.json()
-    return None
+def _centroid(points):
+    lat = sum(p["lat"] for p in points)/len(points)
+    lon = sum(p["lon"] for p in points)/len(points)
+    return (lat, lon)
+
+def optimize_routes(points):
+    """
+    Calcula rota entre os pontos na ordem fornecida usando A* no grafo viário OSM.
+    Retorna (node_path, distancia_km, tempo_min)
+    """
+    if len(points) < 2:
+        return [], 0.0, 0.0
+
+    center = _centroid(points)
+    # raio em metros (ajuste conforme necessidade)
+    G = ox.graph_from_point(center, dist=7000, network_type="drive")
+
+    route_nodes = []
+    total_m = 0.0
+
+    for i in range(len(points)-1):
+        o = points[i]
+        d = points[i+1]
+        orig = ox.distance.nearest_nodes(G, o["lon"], o["lat"])
+        dest = ox.distance.nearest_nodes(G, d["lon"], d["lat"])
+        path = nx.astar_path(
+            G, orig, dest,
+            heuristic=lambda u, v: 0,  # fica equivalente a Dijkstra com peso 'length'
+            weight="length"
+        )
+        # Distância da etapa
+        edge_lengths = ox.utils_graph.get_route_edge_attributes(G, path, "length")
+        stage = sum(edge_lengths)
+        total_m += stage
+
+        if route_nodes and path and route_nodes[-1] == path[0]:
+            route_nodes.extend(path[1:])
+        else:
+            route_nodes.extend(path)
+
+    # velocidade média 40 km/h
+    tempo_min = total_m / (40_000/60)
+    return route_nodes, round(total_m/1000, 2), round(tempo_min, 2)
