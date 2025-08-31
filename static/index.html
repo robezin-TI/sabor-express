@@ -1,28 +1,54 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
+<!doctype html>
+<html lang="pt-br">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="utf-8" />
   <title>Sabor Express</title>
-  <link rel="stylesheet" href="style.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <!-- Leaflet Routing Machine (mantemos por compatibilidade) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.css" />
+  <script src="https://unpkg.com/leaflet-routing-machine@3.2.12/dist/leaflet-routing-machine.js"></script>
+
+  <!-- SortableJS (drag & drop na lista) -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div id="sidebar">
-    <h2>Sabor Express</h2>
-    <input type="text" id="address" placeholder="Digite um endereço">
-    <button onclick="addAddress()">Adicionar</button>
-    <ul id="address-list"></ul>
-    <button onclick="optimizeRoute()">Otimizar rota (OSRM)</button>
-    <button onclick="drawRoute()">Traçar rota</button>
-    <button class="clear" onclick="clearAll()">Limpar tudo</button>
-    
-    <h3>Instruções</h3>
-    <div id="directions"></div>
+  <div class="app">
+    <aside class="sidebar">
+      <h1>Sabor Express</h1>
+
+      <div class="input-row">
+        <input id="search" placeholder="Digite um endereço (ou clique no mapa)" />
+        <button id="add" class="btn gray">Adicionar</button>
+      </div>
+      <div class="hint">Dica: você pode clicar no mapa para adicionar um ponto.</div>
+
+      <div id="list" class="list"></div>
+
+      <div class="actions">
+        <div class="row">
+          <button id="optimize" class="btn primary">Otimizar rota (OSRM)</button>
+          <button id="route" class="btn gray">Traçar rota</button>
+        </div>
+        <button id="clear" class="btn danger">Limpar tudo</button>
+      </div>
+
+      <div class="footer muted">
+        <p>Arraste os itens para reordenar (A, B, C… atualizam automaticamente).</p>
+        <p>Geocodificação: Nominatim (OSM). Roteamento: OSRM.</p>
+      </div>
+    </aside>
+
+    <div id="map"></div>
   </div>
 
-  <div id="map"></div>
-
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <!-- nosso script principal -->
   <script src="script.js"></script>
 </body>
 </html>
