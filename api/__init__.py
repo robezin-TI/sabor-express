@@ -1,1 +1,1 @@
-# Apenas para marcar o diretório como pacote
+# deixa o pacote importável
