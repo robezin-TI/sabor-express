@@ -1,13 +1,24 @@
-from sklearn.linear_model import LinearRegression
 import numpy as np
+from sklearn.linear_model import LinearRegression
 
-class DeliveryTimePredictor:
-    """Modelo ML simples para prever tempo de entrega baseado na distância."""
+class DeliveryTimeModel:
+    """
+    Modelo simples de exemplo: estima tempo (min) a partir de distância total (km) e nº de paradas.
+    """
     def __init__(self):
-        self.model = LinearRegression()
-        X = np.array([[1], [5], [10], [20], [30]])
-        y = np.array([5, 15, 25, 45, 60])  # minutos simulados
-        self.model.fit(X, y)
+        # Treino sintético rápido
+        rng = np.random.default_rng(7)
+        distances = rng.uniform(0.5, 25.0, 200)  # km
+        stops = rng.integers(2, 15, 200)
+        noise = rng.normal(0, 3, 200)
+        y = 3 + distances*2.1 + stops*1.2 + noise  # minutos
+        X = np.c_[distances, stops]
+        self.model = LinearRegression().fit(X, y)
 
-    def predict(self, distance_km):
-        return float(self.model.predict([[distance_km]])[0])
+    def predict(self, distance_km: float, stops: int) -> float:
+        X = np.array([[float(distance_km), int(stops)]])
+        y = self.model.predict(X)[0]
+        return float(max(0.0, y))
+
+# instância única
+MODEL = DeliveryTimeModel()
