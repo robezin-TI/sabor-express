@@ -1,285 +1,211 @@
-(() => {
-  // ---------- MAPA ----------
-  const map = L.map('map', { zoomControl: true }).setView([-23.57, -46.63], 12);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '© OpenStreetMap'
+// Inicializa o mapa
+const map = L.map('map').setView([-23.55052, -46.633308], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let markers = [];
+let routeControl = null;
+let routeLine = null;
+let vehicleMarker = null;
+let animationInterval = null;
+
+// Inicializa Sortable para drag & drop
+const listEl = document.getElementById('list');
+const sortable = Sortable.create(listEl, {
+  animation: 150,
+  onEnd: function() {
+    // Reordena marcadores conforme lista
+    const newOrder = [];
+    listEl.querySelectorAll('.stop').forEach(item => {
+      const index = parseInt(item.dataset.index);
+      newOrder.push(markers[index]);
+    });
+    markers = newOrder;
+    updateRoute();
+    // Atualiza dataset e labels
+    markers.forEach((m, i) => {
+      m.bindPopup(listEl.children[i].querySelector('input').value);
+      listEl.children[i].dataset.index = i;
+    });
+  }
+});
+
+// Adiciona item na lista lateral
+function addListItem(label) {
+  const div = document.createElement('div');
+  div.className = 'stop';
+  div.dataset.index = markers.length - 1;
+
+  div.innerHTML = `
+    <div class="handle">≡</div>
+    <input value="${label}" />
+    <button class="x">×</button>
+  `;
+  listEl.appendChild(div);
+
+  const inputEl = div.querySelector('input');
+  inputEl.addEventListener('input', () => {
+    const idx = parseInt(div.dataset.index);
+    markers[idx].bindPopup(inputEl.value);
+  });
+
+  // Botão remover
+  div.querySelector('.x').addEventListener('click', () => {
+    const idx = parseInt(div.dataset.index);
+    map.removeLayer(markers[idx]);
+    markers.splice(idx, 1);
+    div.remove();
+    listEl.querySelectorAll('.stop').forEach((el, i) => el.dataset.index = i);
+    updateRoute();
+  });
+}
+
+// Adiciona marcador e item na lista
+function addMarker(latlng, label) {
+  const marker = L.marker(latlng, { draggable: true })
+    .addTo(map)
+    .bindPopup(label)
+    .openPopup();
+
+  marker.on('dragend', updateRoute);
+  markers.push(marker);
+  addListItem(label);
+  updateRoute();
+}
+
+// Limpar tudo
+function clearMarkers() {
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  if (routeControl) { map.removeControl(routeControl); routeControl = null; }
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  if (vehicleMarker) { map.removeLayer(vehicleMarker); vehicleMarker = null; }
+  if (animationInterval) { clearInterval(animationInterval); animationInterval = null; }
+  listEl.innerHTML = '';
+  document.getElementById('dir-steps').innerHTML = '';
+  document.getElementById('directions').classList.add('hidden');
+}
+
+// Geocoding via Nominatim
+async function geocode(address) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if (data.length > 0) return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  return null;
+}
+
+// Atualiza rota e painel
+function updateRoute() {
+  if (markers.length < 2) {
+    if (routeControl) map.removeControl(routeControl);
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+    document.getElementById('directions').classList.add('hidden');
+    document.getElementById('dir-steps').innerHTML = '';
+    return;
+  }
+
+  const waypoints = markers.map(m => L.latLng(m.getLatLng()));
+  if (routeControl) map.removeControl(routeControl);
+  if (routeLine) map.removeLayer(routeLine);
+
+  routeControl = L.Routing.control({
+    waypoints,
+    lineOptions: { styles: [{ color: '#2563eb', weight: 5 }] },
+    addWaypoints: false,
+    draggableWaypoints: false,
+    fitSelectedRoutes: true,
+    show: false
   }).addTo(map);
 
-  // ---------- ESTADO ----------
-  let stops = [];          // {id, name, lat, lng, marker}
-  const listEl = document.getElementById('list');
-  const dirPanel = document.getElementById('directions');
-  const dirSummaryEl = document.getElementById('dir-summary');
-  const dirStepsEl = document.getElementById('dir-steps');
+  routeControl.on('routesfound', function(e) {
+    const route = e.routes[0];
+    const summary = `${(route.summary.totalDistance/1000).toFixed(2)} km, ${(route.summary.totalTime/60).toFixed(0)} min`;
+    document.getElementById('dir-summary').innerText = summary;
 
-  // ---------- UI HELPERS ----------
-  function letterIcon(letter) {
-    return L.divIcon({
-      className: 'letter-marker',
-      html: `
-        <div class="pin">
-          <div class="pin-inner">${letter}</div>
-        </div>`,
-      iconSize: [34, 46],
-      iconAnchor: [17, 46],
-      popupAnchor: [0, -40]
+    const stepsContainer = document.getElementById('dir-steps');
+    stepsContainer.innerHTML = '';
+    route.instructions.forEach((step, i) => {
+      const li = document.createElement('li');
+      li.className = 'dir-step';
+      li.innerHTML = `<div class="dir-ico">${i+1}</div><div class="dir-txt">${step.text}</div>`;
+      stepsContainer.appendChild(li);
     });
-  }
+    document.getElementById('directions').classList.remove('hidden');
 
-  function updateMarkerLetters(){
-    stops.forEach((s,i) => {
-      const letter = String.fromCharCode(65+i);
-      s.marker.setIcon(letterIcon(letter));
-      s.marker.bindPopup(`<b>${letter}</b> ${s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`}`);
-    });
-  }
+    const latlngs = route.coordinates.map(c => [c.lat, c.lng]);
+    routeLine = L.polyline(latlngs, { color: '#2563eb', weight: 5 }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [50,50] });
+  });
+}
 
-  function fitToStops(){
-    if(!stops.length) return;
-    const group = L.featureGroup(stops.map(s => s.marker));
-    map.fitBounds(group.getBounds().pad(0.25));
-  }
+// Animação do veículo
+function animateVehicle(routeCoords, speed = 100) {
+  if (vehicleMarker) map.removeLayer(vehicleMarker);
+  if (animationInterval) clearInterval(animationInterval);
 
-  function removeStop(id){
-    const idx = stops.findIndex(s => s.id === id);
-    if (idx >= 0) {
-      map.removeLayer(stops[idx].marker);
-      stops.splice(idx,1);
-      renderList();
-      updateMarkerLetters();
-      clearRoute();
-    }
-  }
+  let index = 0;
+  vehicleMarker = L.marker(routeCoords[0], { icon: L.icon({ iconUrl: 'https://cdn-icons-png.flaticon.com/512/684/684908.png', iconSize: [32,32] }) }).addTo(map);
 
-  function addStop(lat,lng,name=''){
-    const id = Date.now()+'_'+Math.random();
-    const marker = L.marker([lat,lng], { draggable:true, icon:letterIcon('?') }).addTo(map);
-    const s = { id, name, lat, lng, marker };
-    stops.push(s);
+  animationInterval = setInterval(() => {
+    index++;
+    if (index >= routeCoords.length) { clearInterval(animationInterval); animationInterval = null; return; }
+    vehicleMarker.setLatLng(routeCoords[index]);
+    map.panTo(routeCoords[index]);
+  }, speed);
+}
 
-    marker.on('dragend', (e) => {
-      const { lat, lng } = e.target.getLatLng();
-      s.lat = lat; s.lng = lng;
-      updateMarkerLetters();
-      drawRoute(); // atualiza se já tiver rota
-    });
+// Eventos
+map.on('click', e => addMarker(e.latlng, `Ponto ${markers.length + 1}`));
 
-    renderList();
-    updateMarkerLetters();
-    fitToStops();
-  }
-
-  // click no mapa para adicionar ponto
-  map.on('click', (e) => addStop(e.latlng.lat, e.latlng.lng));
-
-  // ---------- LISTA (Drag & Drop) ----------
-  function renderList(){
-    listEl.innerHTML = '';
-    stops.forEach((s,i) => {
-      const item = document.createElement('div');
-      item.className = 'stop';
-      item.dataset.id = s.id;
-
-      const handle = document.createElement('div');
-      handle.className = 'handle';
-      handle.title = 'Arrastar para reordenar';
-      handle.textContent = '⋮⋮';
-
-      const badge = document.createElement('div');
-      badge.className = 'badge';
-      badge.textContent = String.fromCharCode(65+i);
-
-      const input = document.createElement('input');
-      input.value = s.name || `${s.lat.toFixed(5)}, ${s.lng.toFixed(5)}`;
-      input.placeholder = 'Endereço ou nome';
-      input.addEventListener('change', () => { s.name = input.value; updateMarkerLetters(); });
-
-      const left = document.createElement('div');
-      left.className = 'left';
-      left.appendChild(handle);
-      left.appendChild(badge);
-
-      const del = document.createElement('button');
-      del.className = 'x';
-      del.textContent = '×';
-      del.onclick = () => removeStop(s.id);
-
-      item.appendChild(left);
-      item.appendChild(input);
-      item.appendChild(del);
-      listEl.appendChild(item);
-    });
-
-    if (window.Sortable) {
-      new Sortable(listEl, {
-        handle: '.handle',
-        animation: 150,
-        onEnd: (evt) => {
-          const from = evt.oldIndex;
-          const to = evt.newIndex;
-          if (from === to) return;
-          const moved = stops.splice(from, 1)[0];
-          stops.splice(to, 0, moved);
-          updateMarkerLetters();
-          drawRoute();
-        }
-      });
-    }
-  }
-
-  // ---------- GEOCODIFICAÇÃO ----------
-  async function geocode(q){
-    const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&q=${encodeURIComponent(q)}`;
-    const r = await fetch(url, { headers: { 'Accept-Language':'pt-BR' }});
-    const data = await r.json();
-    return data.map(d => ({ lat: +d.lat, lng: +d.lon, display: d.display_name }));
-  }
-
+document.getElementById('add').addEventListener('click', async () => {
   const input = document.getElementById('search');
-  document.getElementById('add').onclick = async () => {
-    const q = input.value.trim();
-    if(!q) return;
-    try{
-      const [first] = await geocode(q);
-      if(!first) { alert('Endereço não encontrado'); return; }
-      addStop(first.lat, first.lng, q);
-      input.value = '';
-    }catch(err){ alert('Erro ao buscar endereço.'); }
-  };
+  const address = input.value.trim();
+  if (!address) return;
+  const latlng = await geocode(address);
+  if (latlng) {
+    addMarker(latlng, address);
+    map.setView(latlng, 14);
+    input.value = '';
+  } else alert('Endereço não encontrado!');
+});
 
-  // ---------- ROTA (OSRM) ----------
-  let routeLayer = null;
+document.getElementById('clear').addEventListener('click', clearMarkers);
+document.getElementById('close-directions').addEventListener('click', () => {
+  document.getElementById('directions').classList.add('hidden');
+});
+document.getElementById('route').addEventListener('click', updateRoute);
 
-  function clearRoute(){
-    if(routeLayer){ map.removeLayer(routeLayer); routeLayer = null; }
-    hideDirections();
-  }
+document.getElementById('optimize').addEventListener('click', async () => {
+  if (markers.length < 3) return;
 
-  function hideDirections(){
-    dirPanel.classList.add('hidden');
-    dirStepsEl.innerHTML = '';
-    dirSummaryEl.textContent = '—';
-  }
-  function showDirections(){ dirPanel.classList.remove('hidden'); }
+  const coords = markers.map(m => `${m.getLatLng().lng},${m.getLatLng().lat}`).join(';');
+  const url = `https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&roundtrip=false&overview=full&geometries=geojson`;
 
-  document.getElementById('close-directions').onclick = hideDirections;
+  const res = await fetch(url);
+  const data = await res.json();
 
-  function formatDuration(sec){
-    const m = Math.round(sec/60);
-    if (m < 60) return `${m} min`;
-    const h = Math.floor(m/60);
-    const mm = m % 60;
-    return `${h} h ${mm} min`;
-  }
+  if (data.code === 'Ok') {
+    const order = data.trips[0].waypoint_order;
+    const newMarkers = order.map(i => markers[i]);
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    listEl.innerHTML = '';
 
-  function stepIcon(type) {
-    // ícones simples baseados em "type" do OSRM
-    const map = {
-      'turn-left': '↰','turn-right':'↱','uturn':'⟲','continue':'↑',
-      'depart':'A','arrive':'B','roundabout':'⟳','merge':'⇶',
-      'on ramp':'↗','off ramp':'↘'
-    };
-    return map[type] || '→';
-  }
-
-  async function drawRoute(){
-    if (stops.length < 2){
-      clearRoute();
-      return;
-    }
-
-    const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=true&annotations=distance,duration`;
-    const r = await fetch(url);
-    const data = await r.json();
-
-    if(data.code !== 'Ok' || !data.routes?.length){
-      alert('OSRM não retornou rota.');
-      return;
-    }
-
-    const route = data.routes[0];
-    const line = route.geometry;
-
-    if (routeLayer) map.removeLayer(routeLayer);
-    routeLayer = L.geoJSON(line, { style: { weight: 6, opacity: 0.9 } }).addTo(map);
-    map.fitBounds(routeLayer.getBounds().pad(0.2));
-
-    // Painel de instruções custom
-    const km = (route.distance/1000).toFixed(1);
-    const dur = formatDuration(route.duration);
-    dirSummaryEl.textContent = `${km} km • ${dur}`;
-    dirStepsEl.innerHTML = '';
-
-    // OSRM steps por "legs"
-    route.legs.forEach((leg, idxLeg) => {
-      leg.steps.forEach((st) => {
-        const li = document.createElement('li');
-        li.className = 'dir-step';
-
-        const icon = document.createElement('div');
-        icon.className = 'dir-ico';
-        icon.textContent = stepIcon(st.maneuver.type);
-
-        const txt = document.createElement('div');
-        txt.className = 'dir-txt';
-        const dist = (st.distance/1000);
-        const niceDist = dist < 1 ? `${Math.round(st.distance)} m` : `${dist.toFixed(1)} km`;
-        txt.innerHTML = `
-          <div class="dir-inst">${st.name ? `Siga por <b>${st.name}</b>` : 'Continue'}</div>
-          <div class="dir-minor">${niceDist}</div>
-        `;
-
-        li.appendChild(icon);
-        li.appendChild(txt);
-        dirStepsEl.appendChild(li);
-      });
-
-      // marca chegada da perna
-      if (idxLeg < route.legs.length) {
-        const li = document.createElement('li');
-        li.className = 'dir-step arrive';
-        li.innerHTML = `<div class="dir-ico">B</div><div class="dir-txt"><div class="dir-inst">Chegada ao ponto ${String.fromCharCode(65+idxLeg+1)}</div></div>`;
-        dirStepsEl.appendChild(li);
-      }
+    newMarkers.forEach((m, idx) => {
+      m.addTo(map);
+      m.bindPopup(`Ponto ${idx+1}`).openPopup();
+      markers.push(m);
+      addListItem(m.getPopup().getContent());
     });
 
-    showDirections();
-  }
+    const routeCoords = data.trips[0].geometry.coordinates.map(c => [c[1], c[0]]);
+    if (routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(routeCoords, { color: '#2563eb', weight: 5 }).addTo(map);
+    map.fitBounds(routeLine.getBounds(), { padding: [50,50] });
 
-  document.getElementById('route').onclick = drawRoute;
-
-  // ---------- OTIMIZAÇÃO DE ORDEM (OSRM Trip) ----------
-  async function optimize(){
-    if(stops.length < 3){ drawRoute(); return; }
-    const coords = stops.map(s => `${s.lng},${s.lat}`).join(';');
-    const url = `https://router.project-osrm.org/trip/v1/driving/${coords}?source=first&destination=last&roundtrip=false&geometries=geojson`;
-    const r = await fetch(url);
-    const data = await r.json();
-    if(data.code !== 'Ok'){ alert('OSRM não retornou solução.'); return; }
-
-    // a API retorna o order dos waypoints (waypoint_index)
-    const order = data.waypoints
-      .slice()
-      .sort((a,b)=>a.waypoint_index-b.waypoint_index)
-      .map(w=>w.trips_index === 0 ? w.waypoint_index : w.waypoint_index);
-
-    stops = order.map(i => stops[i]);
-    renderList();
-    updateMarkerLetters();
-    drawRoute();
-  }
-  document.getElementById('optimize').onclick = optimize;
-
-  // ---------- LIMPAR ----------
-  document.getElementById('clear').onclick = () => {
-    stops.forEach(s => map.removeLayer(s.marker));
-    stops = [];
-    renderList();
-    clearRoute();
-  };
-
-  // ---------- INIT ----------
-  renderList();
-})();
+    updateRoute();
+    animateVehicle(routeCoords, 200);
+  } else alert('Não foi possível otimizar a rota!');
+});
